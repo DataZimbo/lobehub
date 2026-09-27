@@ -371,6 +371,41 @@ describe('dashboardRouter integration', () => {
       expect(runSandbox).not.toHaveBeenCalled();
     });
 
+    it('resolves a project widget with the workspace credential, never the personal one', async () => {
+      const { agents, projects } = await import('@lobechat/database/schemas');
+      const coordinatorId = await createTestAgent(db, ownerId);
+      await db.update(agents).set({ workspaceId }).where(eq(agents.id, coordinatorId));
+      const [project] = await db
+        .insert(projects)
+        .values({
+          coordinatorAgentId: coordinatorId,
+          identifier: 'DASH',
+          name: 'Dashboards project',
+          userId: ownerId,
+          workspaceId,
+        })
+        .returning();
+      await (await gateKeeperModel(ownerId)).create(githubConnector('personal-token-123') as any);
+      const owner = dashboardRouter.createCaller(context(ownerId, workspaceId));
+      const widget = await createWidget(owner, { projectId: project.id, title: 'Project PRs' });
+      expect(widget).toMatchObject({ agentId: null, projectId: project.id, workspaceId });
+      await draftWithEnv(owner, widget.id);
+
+      // Only the creator's personal connector exists: the project widget must not use it.
+      const missing = (await owner.dryRun({ widgetId: widget.id }))!.data;
+      expect(missing).toMatchObject({ error: { code: 'MISSING_ENV' }, status: 'failed' });
+      expect(runSandbox).not.toHaveBeenCalled();
+
+      await (
+        await gateKeeperModel(ownerId, workspaceId)
+      ).create(githubConnector('workspace-token-456') as any);
+      runSandbox.mockResolvedValueOnce(ok({ type: 'stat', value: 1 }));
+      const run = (await owner.dryRun({ widgetId: widget.id }))!.data;
+
+      expect(run?.status).toBe('succeeded');
+      expect(runSandbox.mock.calls[0][0].env).toEqual({ GITHUB_TOKEN: 'workspace-token-456' });
+    });
+
     it('closes the run as failed when credential resolution itself errors', async () => {
       const owner = dashboardRouter.createCaller(context(ownerId, workspaceId));
       const widget = await createWidget(owner);
