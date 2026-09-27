@@ -15,8 +15,17 @@
  * are still registered as `trash_items` children so a restore / purge of the
  * root can find them, but the UI never lists them on their own.
  */
-export const TRASH_RESOURCE_TYPES = ['agent', 'topic', 'message'] as const;
+export const TRASH_RESOURCE_TYPES = [
+  'agent',
+  'topic',
+  'message',
+  'dashboard',
+  'dashboardWidget',
+] as const;
 export type TrashResourceType = (typeof TRASH_RESOURCE_TYPES)[number];
+
+/** Days a trashed root stays restorable before the purge sweep may remove it. */
+export const TRASH_RETENTION_DAYS = 30;
 
 /**
  * Lightweight, denormalised snapshot captured at trash time so the recycle
