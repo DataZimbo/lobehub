@@ -110,7 +110,10 @@ export const resolveWidgetEnv = async (
     // Defense in depth: the model's predicate is scope-exact, but a credential
     // from another scope must never reach a script, whatever the query does.
     if ((connector.workspaceId ?? null) !== (scope.workspaceId ?? null)) continue;
-    if (!connector.isEnabled || connector.status !== 'connected') continue;
+    // `status` tracks MCP tool sync, not credential validity: an API-key
+    // connector that never synced tools stays `disconnected` yet holds a
+    // usable secret. A revoked connector has its credentials wiped instead.
+    if (!connector.isEnabled) continue;
     byIdentifier.set(connector.identifier, connector);
   }
 

@@ -89,10 +89,10 @@ describe('resolveWidgetEnv', () => {
     ).rejects.toBeInstanceOf(MissingWidgetEnvError);
   });
 
-  it('skips disconnected or disabled connectors', async () => {
+  it('skips disabled connectors and connectors without credentials', async () => {
     const model = modelReturning([
-      connector({ status: 'disconnected' }),
-      connector({ identifier: 'linear', isEnabled: false }),
+      connector({ isEnabled: false }),
+      connector({ credentials: null, identifier: 'linear' }),
     ]);
 
     const error = await resolveWidgetEnv(
@@ -110,6 +110,19 @@ describe('resolveWidgetEnv', () => {
       'GITHUB_TOKEN',
       'LINEAR_TOKEN',
     ]);
+  });
+
+  it('uses an API-key connector whose tool sync never ran (status disconnected)', async () => {
+    const model = modelReturning([connector({ status: 'disconnected' })]);
+
+    const env = await resolveWidgetEnv(
+      {} as any,
+      personal,
+      [{ connector: 'github', name: 'GITHUB_TOKEN' }],
+      { connectorModel: model as any },
+    );
+
+    expect(env).toEqual({ GITHUB_TOKEN: 'tok' });
   });
 
   it('lists every missing required variable in one explicit error', async () => {
