@@ -496,6 +496,12 @@ describe('dashboardRouter integration', () => {
       await expect(outsider.runWidget({ widgetId: widget.id })).rejects.toMatchObject({
         code: 'NOT_FOUND',
       });
+      await expect(outsider.listVersions({ widgetId: widget.id })).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+      });
+      await expect(outsider.listRuns({ widgetId: widget.id })).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+      });
 
       const secret = await createWidget(owner, { title: 'Mine', visibility: 'private' });
       await expect(member.widgetDetail({ id: secret.id })).rejects.toMatchObject({

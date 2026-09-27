@@ -428,6 +428,7 @@ export const dashboardRouter = router({
     .input(z.object({ widgetId: uuid }))
     .query(async ({ ctx, input }) => {
       try {
+        if (!(await ctx.widgetModel.findById(input.widgetId))) throw notFound('Widget');
         return { data: await ctx.widgetModel.listVersions(input.widgetId), success: true };
       } catch (error) {
         mapDashboardError(error, 'list widget versions');
@@ -528,6 +529,7 @@ export const dashboardRouter = router({
     .input(z.object({ limit: z.number().int().min(1).max(100).optional(), widgetId: uuid }))
     .query(async ({ ctx, input }) => {
       try {
+        if (!(await ctx.widgetModel.findById(input.widgetId))) throw notFound('Widget');
         const data = await ctx.widgetModel.listRuns(input.widgetId, { limit: input.limit });
         return { data, success: true };
       } catch (error) {
