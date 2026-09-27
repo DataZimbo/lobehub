@@ -21,9 +21,11 @@ interface TickPayload {
  * through QStash in queue mode so each gets its own invocation, inline
  * otherwise.
  *
- * Locally (no `QSTASH_CURRENT_SIGNING_KEY`) trigger a tick by hand:
+ * Trigger a tick by hand against a local server (the script signs the
+ * request when `QSTASH_CURRENT_SIGNING_KEY` is set, as `qstashAuth` then
+ * requires):
  *
- *   curl -X POST "$SERVER_URL/api/workflows/dashboard/tick" -H 'content-type: application/json' -d '{}'
+ *   SERVER_URL=http://localhost:3010 bun run dashboard:tick [--dry-run]
  */
 export async function tick(c: Context) {
   try {
