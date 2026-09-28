@@ -14,8 +14,14 @@ import { HookDispatcher } from '@/server/services/agentRuntime/hooks';
 import type { RuntimeExecutorContext } from '../context';
 import { ServerToolTransport } from './ServerToolTransport';
 
-const { fetchHook, queueMode } = vi.hoisted(() => ({ fetchHook: vi.fn(), queueMode: vi.fn() }));
+const { fetchHook, getEmailsByIds, queueMode } = vi.hoisted(() => ({
+  fetchHook: vi.fn(),
+  getEmailsByIds: vi.fn(),
+  queueMode: vi.fn(),
+}));
 vi.mock('@lobechat/ssrf-safe-fetch', () => ({ ssrfSafeFetch: fetchHook }));
+vi.mock('@/database/models/user', () => ({ UserModel: { getEmailsByIds } }));
+vi.mock('@/database/server', () => ({ getServerDB: async () => ({}) }));
 vi.mock('@/server/services/queue/impls', () => ({ isQueueAgentRuntimeEnabled: queueMode }));
 vi.mock('@/libs/qstash', () => ({ OtelQstashClient: class {} }));
 vi.mock('@/database/models/agent', () => ({
@@ -132,6 +138,7 @@ function setup(hooks: AgentHook[], signal?: AbortSignal, restore = false) {
 }
 
 beforeEach(() => {
+  getEmailsByIds.mockReset().mockResolvedValue([]);
   fetchHook.mockReset().mockImplementation(async () => response('allow'));
   queueMode.mockReturnValue(false);
 });
@@ -142,6 +149,7 @@ describe('beforeToolCall control pipeline', () => {
     'uses the persisted share visitor for hook identity while executing as the owner, queue=%s',
     async (queue) => {
       queueMode.mockReturnValue(queue);
+      getEmailsByIds.mockResolvedValue([{ id: 'visitor-1', email: 'visitor@example.test' }]);
       const fixture = setup(
         [
           control(),
@@ -174,6 +182,7 @@ describe('beforeToolCall control pipeline', () => {
       for (const [, request] of fetchHook.mock.calls) {
         expect(JSON.parse(request.body)).toMatchObject({
           userId: 'visitor-1',
+          userEmail: 'visitor@example.test',
           args: { userId: 'untrusted-input' },
         });
       }
@@ -182,6 +191,7 @@ describe('beforeToolCall control pipeline', () => {
         expect.objectContaining({ userId: 'user' }),
       );
       expect(fixture.state.origin?.userId).toBe('origin-owner');
+      expect(getEmailsByIds).toHaveBeenCalledExactlyOnceWith({}, ['visitor-1']);
     },
   );
 
@@ -235,6 +245,35 @@ describe('beforeToolCall control pipeline', () => {
         );
     },
   );
+
+  it('cancels during email lookup before HTTP, approval or tool execution', async () => {
+    let resolveEmail!: (rows: { id: string; email: string }[]) => void;
+    getEmailsByIds.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveEmail = resolve;
+        }),
+    );
+    const abort = new AbortController();
+    const fixture = setup([control()], abort.signal);
+    fixture.state.userInterventionConfig = { approvalMode: 'manual' };
+    const pending = fixture.step();
+    await vi.waitFor(() => expect(getEmailsByIds).toHaveBeenCalledTimes(1));
+    abort.abort();
+    const result = await pending;
+    resolveEmail([{ id: 'user', email: 'late@example.test' }]);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(result.newState.toolPreparations?.['native-1'].status).toBe('cancelled');
+    expect(fetchHook).not.toHaveBeenCalled();
+    expect(fixture.execute).not.toHaveBeenCalled();
+    expect(fixture.rows).toEqual([
+      expect.objectContaining({
+        tool_call_id: 'native-1',
+        pluginIntervention: { status: 'aborted' },
+      }),
+    ]);
+    expect(result.events.some((event) => event.type === 'human_approve_required')).toBe(false);
+  });
 
   it('allow still requires product approval', async () => {
     const fixture = setup([control()]);

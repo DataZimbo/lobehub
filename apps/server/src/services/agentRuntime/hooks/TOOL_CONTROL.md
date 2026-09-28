@@ -13,7 +13,8 @@ product's permission and approval checks. Cancellation stops waiting and a late
 allow cannot start execution.
 
 The implementation uses F's `executeToolCallWebhook` and `matchesHook`, and T's
-`buildToolCallHookContext`, native tool call ID and `originalArgs`. All controls
+`buildToolCallHookContext` and native tool call ID. C1 adds a preparation-only
+`originalArgs` snapshot; T's lifecycle notifications do not carry it. All controls
 run before observation/mock handlers. A local before handler is called once;
 the first mock wins. Legacy dual handler/webhook hooks select the handler locally
 and the webhook in queue mode. Webhook-only notifications work in either mode.
@@ -31,13 +32,24 @@ Critical notification callbacks retain `fallback: 'none'` failure propagation.
   stored in `state.toolPreparations[nativeCallId]`, scoped by
   `state.toolPreparationParentId` so provider call ID reuse across assistant turns
   cannot reuse an old decision. Internal tool retries reuse preparation.
-- `ToolRunContext.originalArgs` carries the retained original input to T's
-  before/after/error builders. The transport handles blocked results before mock
+- Server `ToolCallControlEvent` extends the native before-tool event with required
+  `originalArgs`. `ServerToolTransport.prepare` snapshots that input from preparation
+  state or current parsed arguments. C2 owns its actual rewrite/restoration use;
+  it is not added back to T's notification context or `ToolRunContext`.
+  The transport handles blocked results before mock
   and device/real execution and dispatches the unsuccessful, non-mocked after event.
 - `human_approved_tool` clears the corresponding cached decisions and rechecks
   controls. C2 owns original-input rewriting, effective parameter consistency,
   old-approval invalidation and continuation hook preservation across both approval
   flows. This draft does not claim those cases are complete.
+
+Controls use the same per-dispatcher `createWebhookPayloadBuilder` as notifications,
+with empty body/projection settings and fourth argument `{ signal }`. Only the
+trusted event user authorizes an email lookup; supplied email is discarded.
+Email lookup waits at most one second. Missing data, lookup failure or timeout
+omits email and leaves control policy unchanged. Cancellation returns `cancelled`
+without sending HTTP; a cancelled waiter does not cancel an independent sibling.
+The shared cache is temporary and worker-local, not a persisted identity snapshot.
 
 ## Temporary C1 response restriction
 

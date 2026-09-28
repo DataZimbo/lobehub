@@ -10,6 +10,10 @@ vi.mock('@lobechat/ssrf-safe-fetch', () => ({
     return 'arrayBuffer' in response ? response : new Response('', { status: response.status });
   },
 }));
+vi.mock('@/database/models/user', () => ({
+  UserModel: { getEmailsByIds: async () => [] },
+}));
+vi.mock('@/database/server', () => ({ getServerDB: async () => ({}) }));
 
 // Mock isQueueAgentRuntimeEnabled to control local vs production mode
 vi.mock('@/server/services/queue/impls', () => ({
@@ -481,13 +485,16 @@ describe('HookDispatcher', () => {
       await dispatcher.dispatch(operationId, 'onToolCallError', {
         apiName: 'search_tweets',
         args: { query: 'test' },
+        assistantMessageId: 'assistant-1',
         callIndex: 1,
         error: 'Network timeout',
+        executor: 'server',
         identifier: 'twitter',
         operationId,
         stepIndex: 2,
+        toolCallId: 'native-call-1',
         userId: 'user_test',
-      } as any);
+      });
 
       expect(handler).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -505,16 +512,20 @@ describe('HookDispatcher', () => {
       await dispatcher.dispatch(operationId, 'afterToolCall', {
         apiName: 'search_tweets',
         args: { query: 'test' },
+        assistantMessageId: 'assistant-1',
         callIndex: 1,
         content: '{"tweets":[]}',
         executionTimeMs: 150,
+        executor: 'server',
         identifier: 'twitter',
         mocked: false,
         operationId,
+        result: { content: '{"tweets":[]}', success: true },
         stepIndex: 1,
         success: true,
+        toolCallId: 'native-call-1',
         userId: 'user_test',
-      } as any);
+      });
 
       expect(handler).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -529,6 +540,9 @@ describe('HookDispatcher', () => {
   describe('dispatchBeforeToolCall', () => {
     it('should return null when no beforeToolCall hooks registered', async () => {
       const result = await dispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'search',
         args: {},
         callIndex: 1,
@@ -550,6 +564,9 @@ describe('HookDispatcher', () => {
       ]);
 
       const result = await dispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'search',
         args: { query: 'test' },
         callIndex: 1,
@@ -575,6 +592,9 @@ describe('HookDispatcher', () => {
       ]);
 
       const result = await dispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'search',
         args: {},
         callIndex: 1,
@@ -590,6 +610,9 @@ describe('HookDispatcher', () => {
       dispatcher.register(operationId, [{ handler, id: 'check-fields', type: 'beforeToolCall' }]);
 
       await dispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'post_tweet',
         args: { text: 'hello' },
         callIndex: 3,
@@ -622,6 +645,9 @@ describe('HookDispatcher', () => {
       ]);
 
       const result = await dispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'search',
         args: {},
         callIndex: 1,
@@ -644,6 +670,9 @@ describe('HookDispatcher', () => {
 
       await expect(
         dispatcher.dispatchBeforeToolCall(operationId, {
+          assistantMessageId: 'assistant-1',
+          executor: 'server',
+          toolCallId: 'native-call-1',
           apiName: 'search',
           args: {},
           callIndex: 1,
@@ -788,6 +817,9 @@ describe('HookDispatcher', () => {
       ]);
 
       const result = await dispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'search',
         args: {},
         callIndex: 1,
@@ -816,6 +848,9 @@ describe('HookDispatcher', () => {
         { handler: secondHandler, id: 'must-not-run', type: 'beforeToolCall' },
       ]);
       const result = await dispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'search',
         args: {},
         callIndex: 1,
@@ -843,6 +878,9 @@ describe('HookDispatcher', () => {
       ]);
 
       const result = await dispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'search',
         args: {},
         callIndex: 1,
@@ -872,6 +910,9 @@ describe('HookDispatcher', () => {
 
       // dispatchBeforeToolCall only runs in local mode
       const result = await dispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'search',
         args: {},
         callIndex: 1,
@@ -900,6 +941,9 @@ describe('HookDispatcher', () => {
 
       // beforeToolCall should not trigger afterStep or onComplete
       await dispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'search',
         args: {},
         callIndex: 1,
@@ -932,6 +976,9 @@ describe('HookDispatcher', () => {
       ]);
 
       const result = await dispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'search',
         args: {},
         callIndex: 1,
@@ -1040,6 +1087,9 @@ describe('HookDispatcher', () => {
 
       // Local mode: mock works
       const localResult = await dispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'search',
         args: {},
         callIndex: 1,
@@ -1057,6 +1107,9 @@ describe('HookDispatcher', () => {
       // This is by design — mock is local-only.
       const otherDispatcher = new HookDispatcher();
       const remoteResult = await otherDispatcher.dispatchBeforeToolCall(operationId, {
+        assistantMessageId: 'assistant-1',
+        executor: 'server',
+        toolCallId: 'native-call-1',
         apiName: 'search',
         args: {},
         callIndex: 1,
