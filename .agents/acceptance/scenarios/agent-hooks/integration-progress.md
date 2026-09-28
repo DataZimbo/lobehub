@@ -1,5 +1,7 @@
 # D integrated execution checkpoint — 2026-09-28
 
+Latest notification-only supplement: [notification-checkpoint.md](notification-checkpoint.md), integration `a471e3876a3ecd25cb233108754e1be3f0ac2cc3`. The historical observations below retain their original SHA and open conditions.
+
 This is an in-progress handoff, not an acceptance verdict or published report.
 
 ## Source and isolation

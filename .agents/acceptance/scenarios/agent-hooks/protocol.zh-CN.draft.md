@@ -1,6 +1,6 @@
 # Agent Runtime HTTP Hook — 未发布集成草稿
 
-本稿对应集成基线 `858b2d4586fcd2b0cfea8b3f8b8757019e152a29`（C2 + S + K + L），不是发布文档。当前实现已接入 allow/deny、完整参数替换与额外上下文，临时控制限制已移除。
+本稿对应集成基线 `a471e3876a3ecd25cb233108754e1be3f0ac2cc3`（C2 + S + K + L），不是发布文档。当前实现已接入 allow/deny、完整参数替换与额外上下文，临时控制限制已移除。
 
 实际 HTTP / 设备检查正在进行。D 已观察到改写后的工具参数与 Web 审批卡不一致；现有 Cloud checkout 与集成 OSS 的编译兼容性也阻断了现代审批验证。下文审批 /card 描述是待修复验证的目标契约。真实模型推理和托管 QStash 投递尚缺测试凭据；不得将本稿视为验收通过或已验证的发布指南。
 
@@ -51,6 +51,12 @@ await aiAgentService.execAgent({ agentId, prompt, hooks });
 Runtime 模式与 webhook 传输方式是两个选择。`delivery:'fetch'` 为默认值，在 queue Runtime 中也等待 HTTP 响应。`delivery:'qstash'` 向 QStash 发布通知；收到发布确认不代表目标端已收件。QStash 发布失败沿用 fetch fallback，`fallback:'none'` 可禁用此回退。QStash 不用于控制响应。
 
 同步 HTTP 不自动 retry。queue replay 可以再次发出请求，队列传输自身也可能重投。没有 outbox 或 exactly-once 保证。消费者应利用可用的 operation/tool 身份与自身业务规则处理重复；协议不新增 request ID，也不要求响应回传关联 ID。
+
+## 审批通知可靠性
+
+现代 continuation 将最终决策分组持久化到 host。在现有 step lock 内逐组投递、保存剩余列表，再更新内存；后组失败不重投已完成 checkpoint 的前组。普通投递失败沿 dispatcher 记录并消费该组；`fallback:'none'` 保留失败组并上抛 `CriticalHookDeliveryError`。checkpoint 以 action group 为单位；组内多个 endpoint 部分失败时，已成功的 endpoint 仍可能重投。
+
+HTTP 已送达但 checkpoint 尚未保存时崩溃，可重复投递；checkpoint 完成后的普通 continuation reuse 或替换 worker 不再重发该组。Stop 与旧审批沿直接投递路径：决策 / 终态已持久化但 dispatch 前崩溃可能丢通知，已 terminal 的 Stop 重放不重建通知。通知失败不回滚已完成的 Stop 或决策。不保证送达，不提供 outbox 或跨崩溃 exactly-once；通知响应里的 deny / 参数改写也会被忽略。
 
 ## 请求与响应
 

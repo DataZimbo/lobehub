@@ -1,6 +1,6 @@
 # Agent Runtime HTTP hooks — unpublished integration draft
 
-This draft describes integration base `858b2d4586fcd2b0cfea8b3f8b8757019e152a29` (C2 + S + K + L). It is not release documentation. The implementation accepts allow/deny, full input replacement and additional context; the temporary control guard has been removed.
+This draft describes integration base `a471e3876a3ecd25cb233108754e1be3f0ac2cc3` (C2 + S + K + L). It is not release documentation. The implementation accepts allow/deny, full input replacement and additional context; the temporary control guard has been removed.
 
 Actual HTTP/device checks are in progress. D observed a mismatch between rewritten tool arguments and the Web approval card, and the available Cloud checkout currently fails to compile against the integrated OSS tree. Approval/card claims below are intended contract pending correction and verification. Real model inference and managed QStash delivery also lack test credentials. Do not interpret this draft as acceptance or publish it as verified guidance.
 
@@ -51,6 +51,12 @@ The variables `aiAgentService`, `agentId`, and `prompt` come from your server in
 Runtime mode and webhook transport are different choices. `delivery:'fetch'` (default) awaits the HTTP request even in queue runtime. `delivery:'qstash'` publishes a notification to QStash; acknowledgement means the queue accepted it, not that the target received it. A QStash publish failure uses the existing fetch fallback unless `fallback:'none'` disables it. QStash cannot carry control responses.
 
 Synchronous HTTP does not automatically retry. Queue replay can issue the request again, and queue transport may redeliver. There is no outbox or exactly-once guarantee. Consumers should handle duplicates using the event's available operation/tool identity and their own business rules; no new request ID or correlation echo is required by this protocol.
+
+## Approval notification reliability
+
+Modern continuation persists the final decision groups in its host state. Under the existing step lock it dispatches one group, saves the remaining groups, then updates memory. A later group failure does not resend an earlier group whose checkpoint succeeded. Ordinary delivery failures follow the dispatcher’s log-and-consume policy; `fallback:'none'` keeps the failed group pending and propagates `CriticalHookDeliveryError`. The checkpoint is per action group, so partial failure across endpoints can resend an endpoint that already succeeded.
+
+A crash after HTTP delivery but before the checkpoint can duplicate the group. A completed checkpoint prevents ordinary continuation reuse or a replacement worker from resending it. Stop and legacy approval send directly: a crash after the durable decision/terminal write but before dispatch can lose the notification, and replay of an already terminal Stop does not reconstruct it. Notification errors do not roll back a completed Stop or decision. There is no guaranteed delivery, outbox or crash exactly-once guarantee. Notification responses, including deny or rewritten input, are ignored.
 
 ## Request and response
 

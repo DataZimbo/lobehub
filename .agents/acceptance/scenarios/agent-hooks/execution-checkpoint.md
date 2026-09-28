@@ -1,5 +1,7 @@
 # Integrated execution checkpoint (not a final acceptance)
 
+Latest notification-only supplement: [notification-checkpoint.md](notification-checkpoint.md), integration `a471e3876a3ecd25cb233108754e1be3f0ac2cc3`. The historical observations below retain their original SHA and open conditions.
+
 Tested product tree: integration-base `858b2d4586fcd2b0cfea8b3f8b8757019e152a29`. D PR: <https://github.com/lobehub/lobehub/pull/20137> (draft). No product logic changes were made by D. The two integration test repairs adapt old fixtures to durable preparation, assistant ownership, expanded notification fields, and the current SSRF transport boundary.
 
 Evidence root: `.acceptances/hooks-d-integrated-r1/assets/`. This table accounts for all 31 agreed criteria. “Observed” describes a bounded result, not a published verdict. Uncovered requirements remain explicit. Tool fixtures call real `execAgent`, persist synthetic assistant/tool input, and execute the real runtime/HTTP/device pipeline; they do not claim model-generated calls or successful inference. Fault seams preserve the actual runtime, DB and HTTP delivery and are disclosed in their artifacts.

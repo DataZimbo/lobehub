@@ -1,8 +1,8 @@
 # C2 submitted interface — awaiting integrated product verification
 
-Source: submitted C2 `5299fed729ff44202e93eb2f5be20a9f0fafa501`, stacked draft PR20134, base `4905628f8e1a0e849f1f2711a365b86ed769c829`. D verified C1 `28ee1ad2` and H `bea67eb8` ancestry and read the pinned TOOL\_CONTROL.md plus context projection, transport preparation, message persistence and notification-service changes. The submitted range contains 35 files. No branch was merged into D, no C2 tests were rerun here and the coordinator has not supplied the complete final integration base.
+Source: C2 `834963412a25506add4cb8de4721d4dc17957f57`, draft PR20134, base `4905628f8e1a0e849f1f2711a365b86ed769c829`. D integrated it without conflicts into `a471e3876a3ecd25cb233108754e1be3f0ac2cc3`, retaining S/K/L and C1/H/F/T ancestry. D reran the affected three TypeScript paths: 210 tests passed / lint clean. Full type diagnostics remain 1444 on both D base/current, byte-identical; this is not a type pass. Evidence: `.acceptances/hooks-d-notification-r2/assets/`.
 
-C2 reports 646 tests, lint and types clean; same-dependency baseline had one H fixture widening diagnostic, fixed with const in C2. These are upstream results, not D's type baseline. Final base/current diagnostics must be recomputed in D's frozen dependency graph. Source logs: `/tmp/lobehub-hook-c2-final-check.log`, `/tmp/lobehub-hook-c2-types-baseline.log`, `/tmp/lobehub-hook-c2-reverse-regression.log`.
+Earlier C2's 646-test clean-type result belongs to its own environment. D's earlier 1103-test check and product observations retain integration `858b2d45` provenance. See `notification-checkpoint.md` for the affected delivery supplement; real Cloud approval/card and model-dependent gaps remain open.
 
 ## Reapproval and persistence observations
 
@@ -21,12 +21,13 @@ The optional supersession field and persisted preparation metadata are internal 
 
 ## Continuation notification delivery
 
-`host.interventionHookEvents` persists afterHumanIntervention events and is drained after the first `executeStep` lock is acquired; the emptied ledger is then saved. Explicit Stop is a separate path after interruption and durable completion, not an event type drained by this loop. For H09/H10/D03/D04, bind checkpoints from the final code:
+`host.interventionHookEvents` persists afterHumanIntervention events and is drained under the first `executeStep` lock, one action group at a time: dispatch, persist the remainder, then update memory. A failed save must not clear memory. Ordinary failures are logged/consumed; critical delivery failure leaves that group pending. The checkpoint is per group, not per endpoint. Explicit Stop is a separate path after interruption and durable completion, not an event type drained by this loop. For H09/H10/D03/D04, bind checkpoints from the final code:
 
 1. Observe a real committed approval decision and the resulting persisted continuation host before its first execution. No HTTP notification should appear merely because a provisional/failed action or repark happened.
 2. Hold the actual first-step lock boundary with an observed probe; correlate lock ownership, host event identity and receiver timestamps. A competing worker that does not own the lock must not independently dispatch the event.
 3. Complete normal dispatch and state persistence, then exercise ordinary queue replay and continuation reuse. The same effective afterHumanIntervention event must not be emitted again by those normal paths. Verify explicit Stop idempotency through its own durable path. Distinct effective decisions keep their own identities and payloads.
-4. Separately interrupt the owned worker around HTTP delivery versus persisted acknowledgement/consumption. Record whether recovery duplicates or loses a delivery at that boundary. There is no outbox or crash exactly-once guarantee; do not generalize normal replay suppression into one, and do not weaken the required normal-replay assertion because crash replay can differ.
+4. Fail the second of two action groups after the first checkpoint. A replacement worker must deliver only the second group. Include multiple endpoints: a failed group may repeat a previously successful endpoint within that group.
+5. Separately interrupt the owned worker around HTTP delivery versus persisted acknowledgement/consumption. Record whether recovery duplicates or loses a delivery at that boundary. Stop/legacy can lose delivery between durable decision and dispatch, while continuation can duplicate delivery before its consumption checkpoint. Already-terminal Stop does not reconstruct a notification. There is no outbox or crash exactly-once guarantee; do not generalize normal replay suppression into one, and do not weaken the required normal-replay assertion because crash replay can differ.
 
 Use actual local and queue HTTP, real QStash target receipts where applicable, inspected UI cards/parent replies and the final-SHA device path. Keep publish acknowledgement distinct from receiver delivery. Preserve H's effective-decision rules: no synthetic success/stop for repark, stale cards, failed claim or rolled-back persistence.
 
@@ -36,6 +37,4 @@ Use actual local and queue HTTP, real QStash target receipts where applicable, i
 
 Preparation and effective plugin arguments are updated atomically on the existing tool row; inspect that row before asynchronous/client/device handoff. Save a bounded crash-recovery trace between rewritten input persistence and repark, comparing immutable original, reviewed approvedArguments and current effective input. Record the actual card → permission → lane → dispatch chain on video for C04/D05, plus the persisted/HTTP evidence for all execution locations.
 
-For an eventual clean integrated checkout, select the submitted file range explicitly when running checks; a bare check on a clean tree selects no C2 changes. Preserve the provided `git diff --name-only -z 4905628f8e1a0e849f1f2711a365b86ed769c829...5299fed729ff44202e93eb2f5be20a9f0fafa501 | xargs -0 bun run check --lint --test --type` recipe with D's process-local Node environment. It is not executed against D's incomplete F checkout.
-
-This supplement refines the existing 31 IDs without executing them. The two earlier plan-review responses predate these additions; final evidence review remains pending after integration and repair.
+Select explicit paths when checking a clean branch; a bare check selects no C2 changes. The incremental command is recorded in `notification-checkpoint.md`. This supplement refines H09/H10/D03/D04 within the existing 31 IDs. It does not replace a real committed approval, inspected UI or provider-backed parent reply. The same checker's final evidence review remains unused pending repair and the final report.
