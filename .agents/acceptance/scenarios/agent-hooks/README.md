@@ -2,7 +2,7 @@
 
 Cloud-dependent blocked subcases and the minimal real entry are listed in [cloud-blocked-subcases.md](cloud-blocked-subcases.md). OSS evidence is retained separately; no generic token/UI pass is inferred from the compatibility fallback.
 
-Current status: integration-base is `196787eedd3578c895dc68c6af181bb16dedc842` (C2 398d8a64, fixed C1/H/S/K/L ancestors). Draft PR #20137 still targets this own integration branch. Full 31-item acceptance is incomplete; no published pass or ready status is claimed.
+Current status: integration-base is `d459b29334e10bec1f68773189d5bd4de3147975` (C2 fc50e61a, production unchanged from 398d8a64, fixed C1/H/S/K/L ancestors). Draft PR #20137 still targets this own integration branch. Full 31-item acceptance is incomplete; no published pass or ready status is claimed.
 
 Latest supplement: [Cloud Stop route repair](cloud-stop-route-checkpoint.md) observes real source-API critical 503→503→200→replay recovery and ordinary best-effort behavior. Token/card/partial/mixed coverage remains open, and cancelled tools still show incorrect Edited/+1. Five affected paths have 157 tests/lint passed; D full types are now **1444 base / 1449 current**, with five added test diagnostics reported to C2.
 

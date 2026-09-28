@@ -45,3 +45,9 @@ Evidence root: `.acceptances/hooks-d-cloud-stop-route-r17/assets/`.
 - `teardown-processes.json`, `teardown.json`: browser closed and only verified D-owned services stopped; DB/Redis retained.
 
 Private logs/full runtime fixture files require redaction before any publication. No final acceptance checker was used; the independent code-review allocation was already exhausted. PR remains draft.
+
+## Test-only successor (r18 quality supplement)
+
+C2 `fc50e61a7d701389ef556025eb673959490ae35a` was merged without conflicts into the same integration branch, now `d459b29334e10bec1f68773189d5bd4de3147975`; docs merge `3d8b1bbece7842da14b39e6476dce82b8ae23acf`. The entire diff from r17 integration is one router test file. It replaces the claim/publication boolean fixture with actual database-model transitions and adds durable resolving/published/completed assertions. Production code is unchanged, so r17 product evidence retains its original served SHA and is reused; no service was started.
+
+The owning file's 39 tests and lint pass. Full type remains 1449; after excluding shifted line numbers, the diagnostic multiset equals r17. The five additional Drizzle test diagnostics relative to pre-repair 1444 remain unresolved and assigned to C2. Logs/provenance: `.acceptances/hooks-d-durable-claim-tests-r18/assets/{check.log,type-comparison.json,provenance.json}`. This supplements quality, not a new product acceptance or independent review.
