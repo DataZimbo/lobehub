@@ -1,3 +1,4 @@
+import type * as Qstash from '@upstash/qstash';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { deliverWebhook, HookDispatcher } from '../HookDispatcher';
@@ -21,7 +22,8 @@ const mockPublishJSON = vi.hoisted(() => vi.fn());
 
 // Plain class (not vi.fn) so the file-level `vi.restoreAllMocks()` can't wipe
 // the implementation between tests.
-vi.mock('@upstash/qstash', () => ({
+vi.mock('@upstash/qstash', async (importOriginal) => ({
+  ...(await importOriginal<typeof Qstash>()),
   Client: class {
     publishJSON = mockPublishJSON;
   },
@@ -305,7 +307,7 @@ describe('HookDispatcher', () => {
           { delivery: 'qstash', fallback: 'none', url: 'https://example.com/hook' },
           { a: 1 },
         ),
-      ).rejects.toThrow(/Hook HTTP request failed/);
+      ).rejects.toThrow(/QSTASH_TOKEN not available/);
 
       expect(global.fetch).not.toHaveBeenCalled();
     });
@@ -319,7 +321,7 @@ describe('HookDispatcher', () => {
           { delivery: 'qstash', fallback: 'none', url: 'https://example.com/hook' },
           { a: 1 },
         ),
-      ).rejects.toThrow('Hook HTTP request failed');
+      ).rejects.toThrow('network_error: QStash publish failed');
 
       expect(global.fetch).not.toHaveBeenCalled();
     });
@@ -352,6 +354,8 @@ describe('HookDispatcher', () => {
       // still gets delivered.
       expect(consoleError).toHaveBeenCalledWith(
         '[HookDispatcher] Critical webhook delivery failed',
+        { operationId, hookId: 'critical-hook', hookType: 'onComplete' },
+        expect.objectContaining({ code: 'configuration' }),
       );
       expect(global.fetch).toHaveBeenCalledWith(
         'https://example.com/normal',
