@@ -1,4 +1,4 @@
-import { type BashState, PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
+import { PageAgentIdentifier, type PageAgentToolState } from '@lobechat/builtin-tool-page-agent';
 import { runPageBash } from '@lobechat/builtin-tool-page-agent/bash';
 import {
   PageAgentExecutionRuntime,
@@ -60,7 +60,7 @@ interface InvariantViolation {
   kind: 'silent-no-op' | 'unexpected-mutation';
 }
 
-const detectHandlerReportedChange = (state: BashState): boolean => state.changed;
+const detectHandlerReportedChange = (state: PageAgentToolState): boolean => state.changed === true;
 
 const detectInvariantViolation = (
   apiName: string,
@@ -149,7 +149,7 @@ const buildEnv = (snapshot: DocumentSnapshot, documentId: string): InvocationEnv
 
 interface HandlerOutput {
   content: string;
-  state: BashState;
+  state: PageAgentToolState;
 }
 
 const withEditor = async (
@@ -241,6 +241,16 @@ const buildService = (
   return {
     bash: (args, ctx) =>
       withEditor(serviceCtx, 'bash', ctx, ({ runtime }) => runPageBash(runtime, args.command)),
+    initPage: (args, ctx) =>
+      withEditor(serviceCtx, 'initPage', ctx, async ({ runtime }) => {
+        const { extractedTitle, nodeCount } = await runtime.initPage(args);
+        return {
+          content: extractedTitle
+            ? `Page replaced with ${nodeCount} blocks; title set to "${extractedTitle}".`
+            : `Page replaced with ${nodeCount} blocks.`,
+          state: { changed: true, nodeCount, rootId: 'root' },
+        };
+      }),
   };
 };
 

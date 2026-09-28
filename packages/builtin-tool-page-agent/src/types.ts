@@ -66,9 +66,13 @@ export interface ReplaceTextState {
 
 // ============ Initialize State ============
 export interface InitDocumentState {
+  changed?: boolean;
+  documentId?: string;
   nodeCount: number;
   rootId: string;
 }
+
+export type PageAgentToolState = BashState | InitDocumentState;
 
 // ============ Document Metadata State ============
 export interface EditTitleState {

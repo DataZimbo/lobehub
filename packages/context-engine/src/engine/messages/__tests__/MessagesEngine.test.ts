@@ -1104,7 +1104,7 @@ describe('MessagesEngine', () => {
       );
     });
 
-    it('should inject legacy page selections as selected text without editor ids', async () => {
+    it('should inject legacy page selections as LiteXML with node ids', async () => {
       const messages: UIChatMessage[] = [
         {
           content: 'Question',
@@ -1130,9 +1130,8 @@ describe('MessagesEngine', () => {
       const result = await engine.process();
 
       expect(result.messages[0].content).toContain('source="page"');
-      expect(result.messages[0].content).toContain('Selected');
+      expect(result.messages[0].content).toContain('<p id="ab12">Selected</p>');
       expect(result.messages[0].content).not.toContain('<user_page_selections');
-      expect(result.messages[0].content).not.toContain('id="ab12"');
     });
 
     it('should place additional contexts at the stable prefix and virtual tail', async () => {

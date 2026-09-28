@@ -9,7 +9,6 @@ import type { CommandName } from 'just-bash';
 import type { BashState } from '../types';
 
 const DOC_XML = '/doc.xml';
-const DOC_MD = '/doc.md';
 const TITLE = '/title';
 const OUTLINE = '/.meta/outline';
 
@@ -94,6 +93,30 @@ const readIfExists = async (
   path: string,
 ) => ((await fs.exists(path)) ? decodeByteSequences(await fs.readFile(path)) : undefined);
 
+export class PageChangedDuringCommandError extends Error {
+  constructor() {
+    super(
+      'The page changed while the command was running (it was edited or another page was opened), so nothing was written. Stop and tell the user.',
+    );
+    this.name = 'PageChangedDuringCommandError';
+  }
+}
+
+// The command works on a snapshot; a live editor can change under it while it
+// runs, and applying ids from that snapshot would overwrite the user's typing
+// or land on another page.
+const assertPageUnchanged = (runtime: EditorRuntime, xml: string, title: string) => {
+  let current: ReturnType<EditorRuntime['getPageContentContext']>;
+  try {
+    current = runtime.getPageContentContext('xml');
+  } catch {
+    throw new PageChangedDuringCommandError();
+  }
+  if ((current.xml ?? '') !== xml || current.metadata.title !== title) {
+    throw new PageChangedDuringCommandError();
+  }
+};
+
 export const runPageBash = async (
   runtime: EditorRuntime,
   command: string,
@@ -101,10 +124,9 @@ export const runPageBash = async (
   const { Bash, defineCommand } = await import('just-bash');
 
   const {
-    markdown = '',
     metadata: { title },
     xml = '',
-  } = runtime.getPageContentContext('both');
+  } = runtime.getPageContentContext('xml');
   const outline = buildOutline(xml);
 
   const bash = new Bash({
@@ -125,7 +147,6 @@ export const runPageBash = async (
     executionLimitProfile: 'hardened',
     executionLimits: { maxExecutionTimeMs: MAX_EXECUTION_MS, maxOutputSize: MAX_OUTPUT_BYTES },
     files: {
-      [DOC_MD]: markdown,
       [DOC_XML]: xml,
       [OUTLINE]: outline,
       [TITLE]: `${title}\n`,
@@ -154,14 +175,12 @@ export const runPageBash = async (
   if (exitCode !== 0) output.push(`exit ${exitCode}`);
 
   const nextXml = await readIfExists(bash.fs, DOC_XML);
-  const nextMarkdown = await readIfExists(bash.fs, DOC_MD);
   const nextTitleFile = await readIfExists(bash.fs, TITLE);
   const nextOutline = await readIfExists(bash.fs, OUTLINE);
 
   const warnings: string[] = [];
   for (const [path, next] of [
     [DOC_XML, nextXml],
-    [DOC_MD, nextMarkdown],
     [TITLE, nextTitleFile],
   ] as const) {
     if (next === undefined) warnings.push(`warning: ${path} was deleted; ignored.`);
@@ -178,7 +197,6 @@ export const runPageBash = async (
   output.push(...warnings);
 
   const xmlChanged = nextXml !== undefined && nextXml !== xml;
-  const markdownChanged = nextMarkdown !== undefined && nextMarkdown !== markdown;
   const nextTitle = nextTitleFile?.replace(/\r?\n$/, '');
   const titleChanged = nextTitle !== undefined && nextTitle !== title;
 
@@ -190,14 +208,8 @@ export const runPageBash = async (
   if (hitLimit) {
     return reject('the command hit an execution limit. Split the work into smaller commands.');
   }
-  if (
-    (xmlChanged && isTooLarge(nextXml!, xml)) ||
-    (markdownChanged && isTooLarge(nextMarkdown!, markdown))
-  ) {
+  if (xmlChanged && isTooLarge(nextXml!, xml)) {
     return reject('the edited page is too large compared with the current one.');
-  }
-  if (xmlChanged && markdownChanged) {
-    return reject(`${DOC_XML} and ${DOC_MD} were both modified. Edit one of them per call.`);
   }
   if (titleChanged && (!nextTitle!.trim() || /[\r\n]/.test(nextTitle!))) {
     return reject(`${TITLE} must hold a single non-empty line.`);
@@ -206,13 +218,11 @@ export const runPageBash = async (
   const diff = xmlChanged ? diffLiteXMLBlocks(xml, nextXml!) : undefined;
   if (diff && !diff.ok) return reject(`${DOC_XML} ${diff.reason}.`);
 
+  if (xmlChanged || titleChanged) assertPageUnchanged(runtime, xml, title);
+
   let changed = false;
 
-  if (markdownChanged) {
-    const result = await runtime.initPage({ extractTitle: false, markdown: nextMarkdown! });
-    output.push(`${DOC_MD}: page replaced (${result.nodeCount} blocks).`);
-    changed = true;
-  } else if (diff?.ok && diff.operations.length === 0) {
+  if (diff?.ok && diff.operations.length === 0) {
     output.push(`${DOC_XML}: no block changes detected.`);
   } else if (diff?.ok) {
     const result = await runtime.modifyNodes({ operations: diff.operations });

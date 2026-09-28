@@ -190,11 +190,11 @@ describe('diffLiteXMLBlocks', () => {
     if (!result.ok) expect(result.reason).toMatch(/after <\/root>/);
   });
 
-  it('rejects edits to an empty page and points at /doc.md', () => {
+  it('rejects edits to an empty page and points at the initPage tool', () => {
     const result = diffLiteXMLBlocks('<root></root>', doc('<p>x</p>'));
 
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toMatch(/doc\.md/);
+    if (!result.ok) expect(result.reason).toMatch(/initPage/);
   });
 
   it('rejects unbalanced tags', () => {

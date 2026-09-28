@@ -264,7 +264,7 @@ export class EditorRuntime {
     let extractedTitle: string | undefined;
 
     // Check if markdown starts with a # title heading
-    if (args.extractTitle !== false && markdown.startsWith('# ')) {
+    if (markdown.startsWith('# ')) {
       const endOfLine = markdown.search(/\r?\n/);
       const titleLine = endOfLine === -1 ? markdown : markdown.slice(0, endOfLine);
       extractedTitle = titleLine.slice(2).trim();

@@ -12,6 +12,10 @@ const state = (changed: boolean) => ({ changed, exitCode: 0, output: '', success
 
 const buildService = (bash?: PageAgentRuntimeService['bash']): PageAgentRuntimeService => ({
   bash: vi.fn(bash ?? (async () => ({ content: 'ok', state: state(false) }))),
+  initPage: vi.fn(async () => ({
+    content: 'initialized',
+    state: { changed: true, nodeCount: 1, rootId: 'root' },
+  })),
 });
 
 describe('PageAgentExecutionRuntime', () => {
@@ -67,5 +71,15 @@ describe('PageAgentExecutionRuntime', () => {
     expect((result.error as { type?: string }).type).toBe('PageAgentDocumentLocked');
     expect(result.content).toMatch(/another member/);
     expect(result.content).toMatch(/nothing was written/i);
+  });
+
+  it('forwards initPage to the service', async () => {
+    const service = buildService();
+    const runtime = new PageAgentExecutionRuntime(service);
+
+    const result = await runtime.initPage({ markdown: '# Hi' }, ctxWithDoc);
+
+    expect(service.initPage).toHaveBeenCalledWith({ markdown: '# Hi' }, ctxWithDoc);
+    expect(result).toMatchObject({ content: 'initialized', success: true });
   });
 });

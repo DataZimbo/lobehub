@@ -85,7 +85,7 @@ describe('ContextSelectionsInjector', () => {
   });
 
   describe('page selections', () => {
-    it('injects the selected text of a page selection without editor node ids', async () => {
+    it('injects a page selection as its LiteXML, node ids included', async () => {
       const injector = new ContextSelectionsInjector({ enabled: true });
 
       const result = await injector.process(
@@ -108,9 +108,10 @@ describe('ContextSelectionsInjector', () => {
         ]),
       );
 
-      expect(result.messages[0].content).toContain('Pricing starts at $10');
+      expect(result.messages[0].content).toContain(
+        '<p id="ab12"><span id="cd34">Pricing starts at $10</span></p>',
+      );
       expect(result.messages[0].content).toContain('source="page"');
-      expect(result.messages[0].content).not.toContain('id="ab12"');
     });
 
     it('falls back to legacy pageSelections on messages saved before contextSelections', async () => {
@@ -135,9 +136,8 @@ describe('ContextSelectionsInjector', () => {
         ]),
       );
 
-      expect(result.messages[0].content).toContain('A long legacy paragraph');
+      expect(result.messages[0].content).toContain('<p id="ab12">A long legacy paragraph</p>');
       expect(result.messages[0].content).toContain('source="page"');
-      expect(result.messages[0].content).not.toContain('id="ab12"');
     });
   });
 

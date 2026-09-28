@@ -2,6 +2,8 @@ import type { EditorRuntime } from '@lobechat/editor-runtime';
 import type { BuiltinToolContext } from '@lobechat/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type * as BashModule from '../../bash';
+import { PageChangedDuringCommandError } from '../../bash';
 import { PageAgentIdentifier } from '../../types';
 import { PageAgentExecutor } from './index';
 
@@ -11,7 +13,10 @@ const { invalidateDocumentMutation, runPageBash } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/services/document/invalidation', () => ({ invalidateDocumentMutation }));
-vi.mock('../../bash', () => ({ runPageBash }));
+vi.mock('../../bash', async (importOriginal) => ({
+  ...(await importOriginal<typeof BashModule>()),
+  runPageBash,
+}));
 
 describe('PageAgentExecutor', () => {
   let executor: PageAgentExecutor;
@@ -28,10 +33,20 @@ describe('PageAgentExecutor', () => {
     executor = new PageAgentExecutor(runtime);
   });
 
-  it('exposes only the bash api', () => {
+  it('exposes the bash and initPage apis', () => {
     expect(executor.identifier).toBe(PageAgentIdentifier);
     expect(executor.hasApi('bash')).toBe(true);
+    expect(executor.hasApi('initPage')).toBe(true);
     expect(executor.hasApi('modifyNodes')).toBe(false);
+  });
+
+  it('replaces the mounted page from Markdown with initPage', async () => {
+    (runtime as any).initPage = vi.fn(async () => ({ extractedTitle: 'Fresh', nodeCount: 2 }));
+
+    const result = await executor.invoke('initPage', { markdown: '# Fresh\n\nbody' }, context);
+
+    expect((runtime as any).initPage).toHaveBeenCalledWith({ markdown: '# Fresh\n\nbody' });
+    expect(result).toMatchObject({ state: { changed: true, nodeCount: 2 }, success: true });
   });
 
   it('runs the command against the mounted editor', async () => {
@@ -52,6 +67,16 @@ describe('PageAgentExecutor', () => {
     expect(result.success).toBe(false);
     expect(result.error?.type).toBe('PageEditorNotMounted');
     expect(runPageBash).not.toHaveBeenCalled();
+  });
+
+  it('stops the agent loop when the page changed under the command', async () => {
+    runPageBash.mockRejectedValue(new PageChangedDuringCommandError());
+
+    const result = await executor.invoke('bash', { command: "sed -i 's/a/b/' /doc.xml" }, context);
+
+    expect(result.success).toBe(false);
+    expect(result.stop).toBe(true);
+    expect(result.error?.type).toBe('PageChangedDuringCommand');
   });
 
   it('reports a thrown error as a failed call', async () => {

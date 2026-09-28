@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { createHook } from 'node:async_hooks';
 
-import { runPageBash } from '@lobechat/builtin-tool-page-agent/bash';
+import { PageChangedDuringCommandError, runPageBash } from '@lobechat/builtin-tool-page-agent/bash';
 import { EditorRuntime } from '@lobechat/editor-runtime';
 import { createHeadlessEditor } from '@lobehub/editor/headless';
 import { describe, expect, it } from 'vitest';
@@ -22,6 +22,7 @@ const setup = (markdown: string, initialTitle = 'Old Title') => {
 
   return {
     getTitle: () => title,
+    runtime,
     markdown: () => headless.export().markdown.trim(),
     run: (command: string) => runPageBash(runtime, command),
   };
@@ -31,11 +32,29 @@ describe('runPageBash', () => {
   it('reads the page without changing it', async () => {
     const page = setup('para one\n\npara two\n');
 
-    const { content, state } = await page.run('cat /doc.md');
+    const { content, state } = await page.run('cat /doc.xml');
 
     expect(content).toContain('para two');
     expect(state.changed).toBe(false);
     expect(state.exitCode).toBe(0);
+  });
+
+  it('does not expose a markdown copy of the page', async () => {
+    const page = setup('para one\n');
+
+    const { state } = await page.run('ls /doc.md');
+
+    expect(state.exitCode).not.toBe(0);
+  });
+
+  it('ignores a /doc.md written by the command', async () => {
+    const page = setup('para one\n');
+
+    const { content, state } = await page.run("echo '# New' > /doc.md");
+
+    expect(state.changed).toBe(false);
+    expect(page.markdown()).toBe('para one');
+    expect(content).toContain('/doc.md');
   });
 
   it('lists top-level blocks in the outline', async () => {
@@ -68,15 +87,6 @@ describe('runPageBash', () => {
     expect(content).toContain('exit 1');
   });
 
-  it('replaces the whole page when /doc.md is written', async () => {
-    const page = setup('old body\n');
-
-    const { state } = await page.run("printf '## Fresh\\n\\nnew body\\n' > /doc.md");
-
-    expect(state.changed).toBe(true);
-    expect(page.markdown()).toBe('## Fresh\n\nnew body');
-  });
-
   it('renames the page when /title is written', async () => {
     const page = setup('body\n');
 
@@ -94,16 +104,6 @@ describe('runPageBash', () => {
     expect(state.changed).toBe(false);
     expect(page.getTitle()).toBe('Old Title');
     expect(content).toMatch(/title/i);
-  });
-
-  it('rejects writing both /doc.xml and /doc.md in one call', async () => {
-    const page = setup('para one\n');
-
-    const { content, state } = await page.run("sed -i 's/one/ONE/' /doc.xml && echo 'x' > /doc.md");
-
-    expect(state.changed).toBe(false);
-    expect(page.markdown()).toBe('para one');
-    expect(content).toMatch(/doc\.xml.*doc\.md|doc\.md.*doc\.xml/);
   });
 
   it('rejects a malformed /doc.xml without touching the page', async () => {
@@ -147,16 +147,6 @@ describe('runPageBash', () => {
     expect(content).toMatch(/nothing was written/i);
   });
 
-  it('keeps a leading heading and the title when /doc.md is edited', async () => {
-    const page = setup('# Intro\n\nbody text\n', 'My Page');
-
-    const { state } = await page.run("sed -i 's/body text/BODY/' /doc.md");
-
-    expect(state.changed).toBe(true);
-    expect(page.getTitle()).toBe('My Page');
-    expect(page.markdown()).toBe('# Intro\n\nBODY');
-  });
-
   it('rejects blocks appended after </root>', async () => {
     const page = setup('para one\n');
 
@@ -166,20 +156,20 @@ describe('runPageBash', () => {
     expect(content).toMatch(/nothing was written/i);
   });
 
-  it('points an edit of an empty page at /doc.md', async () => {
+  it('points an edit of an empty page at the initPage tool', async () => {
     const page = setup('');
 
     const { content, state } = await page.run("echo '<root><p>hello</p></root>' > /doc.xml");
 
     expect(state.changed).toBe(false);
-    expect(content).toContain('/doc.md');
+    expect(content).toContain('initPage');
   });
 
   it('rejects a rewrite that grows the page far beyond its size', async () => {
     const page = setup('para one\n');
 
     const { content, state } = await page.run(
-      "echo 0123456789 > /tmp/a; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18; do sed -i 's/.*/&&/' /tmp/a; done; cp /tmp/a /doc.md",
+      "echo 0123456789 > /tmp/a; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18; do sed -i 's/.*/&&/' /tmp/a; done; cp /tmp/a /doc.xml",
     );
 
     expect(state.changed).toBe(false);
@@ -209,7 +199,7 @@ describe('runPageBash', () => {
       },
     }).enable();
 
-    const { state } = await page.run('cat /doc.md');
+    const { state } = await page.run('cat /doc.xml');
     hook.disable();
 
     expect(errors).toEqual([]);
@@ -224,5 +214,36 @@ describe('runPageBash', () => {
     );
 
     expect(page.markdown()).toBe('café price €70 for 张三');
+  });
+
+  it('refuses to write when the page changed while the command ran', async () => {
+    const page = setup('para one\n\npara two\n');
+    const read = page.runtime.getPageContentContext.bind(page.runtime);
+    let reads = 0;
+    page.runtime.getPageContentContext = (format) => {
+      reads += 1;
+      const context = read(format);
+      return reads === 1 ? context : { ...context, xml: context.xml!.replace('para two', 'typed') };
+    };
+
+    await expect(page.run("sed -i 's/para one/para ONE/' /doc.xml")).rejects.toBeInstanceOf(
+      PageChangedDuringCommandError,
+    );
+    expect(page.markdown()).toBe('para one\n\npara two');
+  });
+
+  it('refuses to write when the editor went away while the command ran', async () => {
+    const page = setup('para one\n');
+    const read = page.runtime.getPageContentContext.bind(page.runtime);
+    let reads = 0;
+    page.runtime.getPageContentContext = (format) => {
+      reads += 1;
+      if (reads > 1) throw new Error('Editor not initialized.');
+      return read(format);
+    };
+
+    await expect(page.run("sed -i 's/one/ONE/' /doc.xml")).rejects.toBeInstanceOf(
+      PageChangedDuringCommandError,
+    );
   });
 });

@@ -239,7 +239,7 @@ export const diffLiteXMLBlocks = (original: string, edited: string): LiteXMLBloc
   const before = parseBlocks(original);
   if (typeof before === 'string') return { ok: false, reason: `original document: ${before}` };
   if (before.length === 0) {
-    return { ok: false, reason: 'the page is empty; write its content to /doc.md instead' };
+    return { ok: false, reason: 'the page is empty; call the initPage tool with Markdown instead' };
   }
   const after = parseBlocks(edited);
   if (typeof after === 'string') return { ok: false, reason: after };
@@ -255,7 +255,7 @@ export const diffLiteXMLBlocks = (original: string, edited: string): LiteXMLBloc
     return {
       ok: false,
       reason:
-        'most block ids were dropped. Keep the id attributes from /doc.xml when editing existing blocks, or write /doc.md to replace the whole page',
+        'most block ids were dropped. Keep the id attributes from /doc.xml when editing existing blocks, or call the initPage tool to replace the whole page',
     };
   }
 

@@ -1,6 +1,7 @@
+import type { InitDocumentArgs } from '@lobechat/editor-runtime';
 import type { BuiltinServerRuntimeOutput } from '@lobechat/types';
 
-import type { BashArgs, BashState } from '../types';
+import type { BashArgs, PageAgentToolState } from '../types';
 
 export interface PageAgentInvocationContext {
   documentId?: string | null;
@@ -12,11 +13,15 @@ export interface PageAgentInvocationContext {
 
 export interface PageAgentApiOutput {
   content: string;
-  state: BashState;
+  state: PageAgentToolState;
 }
 
 export interface PageAgentRuntimeService {
   bash: (args: BashArgs, ctx: PageAgentInvocationContext) => Promise<PageAgentApiOutput>;
+  initPage: (
+    args: InitDocumentArgs,
+    ctx: PageAgentInvocationContext,
+  ) => Promise<PageAgentApiOutput>;
 }
 
 const MISSING_DOCUMENT_ID =
@@ -40,16 +45,23 @@ export class PageAgentExecutionRuntime {
     this.service = service;
   }
 
-  bash = async (
-    args: BashArgs,
+  bash = (args: BashArgs, ctx: PageAgentInvocationContext) =>
+    this.dispatch('bash', ctx, () => this.service.bash(args, ctx));
+
+  initPage = (args: InitDocumentArgs, ctx: PageAgentInvocationContext) =>
+    this.dispatch('initPage', ctx, () => this.service.initPage(args, ctx));
+
+  private async dispatch(
+    apiName: string,
     ctx: PageAgentInvocationContext,
-  ): Promise<BuiltinServerRuntimeOutput> => {
+    invoke: () => Promise<PageAgentApiOutput>,
+  ): Promise<BuiltinServerRuntimeOutput> {
     if (!ctx.documentId) {
       return failure(MISSING_DOCUMENT_ID, 'PageAgentMissingDocumentId');
     }
 
     try {
-      const output = await this.service.bash(args, ctx);
+      const output = await invoke();
       return {
         content: output.content,
         state: { documentId: ctx.documentId, ...output.state },
@@ -60,8 +72,8 @@ export class PageAgentExecutionRuntime {
       if (err.code === 'CONFLICT') {
         return failure(DOCUMENT_LOCKED, 'PageAgentDocumentLocked', err);
       }
-      console.error('[PageAgentExecutionRuntime] bash error', err);
+      console.error(`[PageAgentExecutionRuntime] ${apiName} error`, err);
       return failure(err.message, 'PageAgentRuntimeError', err);
     }
-  };
+  }
 }

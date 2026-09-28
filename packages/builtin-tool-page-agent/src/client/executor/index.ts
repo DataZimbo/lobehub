@@ -1,9 +1,9 @@
-import type { EditorRuntime } from '@lobechat/editor-runtime';
+import type { EditorRuntime, InitDocumentArgs } from '@lobechat/editor-runtime';
 import type { BuiltinToolResult, ToolAfterCallContext } from '@lobechat/types';
 import { BaseExecutor } from '@lobechat/types';
 import debug from 'debug';
 
-import { runPageBash } from '../../bash';
+import { PageChangedDuringCommandError, runPageBash } from '../../bash';
 import type { BashArgs } from '../../types';
 import { PageAgentIdentifier } from '../../types';
 
@@ -11,6 +11,7 @@ const log = debug('lobe-page-agent:executor');
 
 const PageAgentApiName = {
   bash: 'bash',
+  initPage: 'initPage',
 } as const;
 
 const getRuntimeDebugSnapshot = (runtime: EditorRuntime) => {
@@ -23,7 +24,7 @@ const getRuntimeDebugSnapshot = (runtime: EditorRuntime) => {
 
 const PAGE_EDITOR_NOT_MOUNTED_MESSAGE =
   'Page editor is not currently mounted. This topic was started in the page editor, but the editor is not active in the current view. ' +
-  'Do not retry bash here — it requires a mounted editor. ' +
+  'Do not retry bash or initPage here — they require a mounted editor. ' +
   'To read or modify the topic document, use lobe-agent-documents (readDocument / replaceDocumentContent / modifyNodes).';
 
 class PageAgentExecutor extends BaseExecutor<typeof PageAgentApiName> {
@@ -37,44 +38,79 @@ class PageAgentExecutor extends BaseExecutor<typeof PageAgentApiName> {
     this.runtime = runtime;
   }
 
-  // Runs the page shell in the renderer when the client runtime executes tools
-  // locally; gateway runs go through the server runtime instead.
-  bash = async ({ command }: BashArgs): Promise<BuiltinToolResult> => {
-    // scope is topic-bound, not route-bound: navigating away from the page
-    // editor keeps scope==='page' on the same topic, so without this guard the
-    // LLM could still edit a stale editor ref.
-    if (!this.runtime.isReady()) {
-      console.warn('[PageAgentToolCall] blocked: editor not mounted', {
-        runtime: getRuntimeDebugSnapshot(this.runtime),
-      });
-      return {
-        content: PAGE_EDITOR_NOT_MOUNTED_MESSAGE,
-        error: {
-          body: {
-            apiName: PageAgentApiName.bash,
-            code: 'PAGE_EDITOR_NOT_MOUNTED',
-            kind: 'replan',
-            runtime: getRuntimeDebugSnapshot(this.runtime),
-          },
-          message: PAGE_EDITOR_NOT_MOUNTED_MESSAGE,
-          type: 'PageEditorNotMounted',
+  // scope is topic-bound, not route-bound: navigating away from the page editor
+  // keeps scope==='page' on the same topic, so without this guard the LLM could
+  // still edit a stale editor ref.
+  private notMounted = (apiName: string): BuiltinToolResult | undefined => {
+    if (this.runtime.isReady()) return;
+    console.warn('[PageAgentToolCall] blocked: editor not mounted', {
+      apiName,
+      runtime: getRuntimeDebugSnapshot(this.runtime),
+    });
+    return {
+      content: PAGE_EDITOR_NOT_MOUNTED_MESSAGE,
+      error: {
+        body: {
+          apiName,
+          code: 'PAGE_EDITOR_NOT_MOUNTED',
+          kind: 'replan',
+          runtime: getRuntimeDebugSnapshot(this.runtime),
         },
+        message: PAGE_EDITOR_NOT_MOUNTED_MESSAGE,
+        type: 'PageEditorNotMounted',
+      },
+      success: false,
+    };
+  };
+
+  private fail = (apiName: string, error: unknown): BuiltinToolResult => {
+    const err = error as Error;
+    if (error instanceof PageChangedDuringCommandError) {
+      return {
+        content: err.message,
+        error: { message: err.message, type: 'PageChangedDuringCommand' },
+        stop: true,
         success: false,
       };
     }
+    console.error(`[PageAgentToolCall] ${apiName}:error`, err);
+    return {
+      error: { body: error, message: err.message, type: 'PluginServerError' },
+      success: false,
+    };
+  };
+
+  // Runs in the renderer when the client runtime executes tools locally;
+  // gateway runs go through the server runtime instead. No documentId in state:
+  // the mounted editor already holds these edits and saves them itself, and
+  // revalidating would let a stale server row win.
+  bash = async ({ command }: BashArgs): Promise<BuiltinToolResult> => {
+    const blocked = this.notMounted(PageAgentApiName.bash);
+    if (blocked) return blocked;
 
     try {
-      // No documentId in state: the mounted editor already holds these edits and
-      // saves them itself; revalidating would let a stale server row win.
       const { content, state } = await runPageBash(this.runtime, command);
       return { content, state, success: true };
     } catch (error) {
-      const err = error as Error;
-      console.error('[PageAgentToolCall] bash:error', err);
+      return this.fail(PageAgentApiName.bash, error);
+    }
+  };
+
+  initPage = async (params: InitDocumentArgs): Promise<BuiltinToolResult> => {
+    const blocked = this.notMounted(PageAgentApiName.initPage);
+    if (blocked) return blocked;
+
+    try {
+      const { extractedTitle, nodeCount } = await this.runtime.initPage(params);
       return {
-        error: { body: error, message: err.message, type: 'PluginServerError' },
-        success: false,
+        content: extractedTitle
+          ? `Page replaced with ${nodeCount} blocks; title set to "${extractedTitle}".`
+          : `Page replaced with ${nodeCount} blocks.`,
+        state: { changed: true, nodeCount, rootId: 'root' },
+        success: true,
       };
+    } catch (error) {
+      return this.fail(PageAgentApiName.initPage, error);
     }
   };
 
@@ -83,7 +119,7 @@ class PageAgentExecutor extends BaseExecutor<typeof PageAgentApiName> {
   // mounted editor adopts it; pushing a snapshot into the editor here would
   // hydrate twice and mark the store dirty in between.
   onAfterCall = async ({ apiName, result }: ToolAfterCallContext): Promise<void> => {
-    if (!result.success || apiName !== PageAgentApiName.bash) return;
+    if (!result.success || !this.hasApi(apiName)) return;
 
     const state = result.state as { changed?: unknown; documentId?: unknown } | undefined | null;
     if (state?.changed !== true) return;

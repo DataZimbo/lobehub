@@ -20,6 +20,7 @@ const fromLegacyPageSelections = (
     pageId: selection.pageId,
     source: 'page',
     title: selection.title,
+    xml: selection.xml,
   }));
 
 export interface ContextSelectionsInjectorConfig {
