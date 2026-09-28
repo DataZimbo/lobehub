@@ -1,6 +1,8 @@
 export { PageAgentManifest } from './manifest';
 export { systemPrompt } from './systemRole';
 export {
+  type BashArgs,
+  type BashState,
   DocumentApiName,
   type EditTitleState,
   type GetPageContentState,

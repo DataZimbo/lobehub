@@ -26,12 +26,6 @@ const formatSelectionAttributes = (selection: ContextSelection): string => {
   return `${attrs.join(' ')}${formatLineRange(selection)}`;
 };
 
-const getSelectionBody = (selection: ContextSelection): string => {
-  if (selection.source === 'page') return selection.xml || selection.content;
-
-  return selection.content;
-};
-
 /**
  * Format generic context selections into a system prompt context.
  * Each selection carries source metadata so non-page selections, such as code
@@ -43,7 +37,7 @@ export const formatContextSelections = (selections: ContextSelection[]): string 
   const formattedSelections = selections
     .map(
       (selection) => `<context_selection ${formatSelectionAttributes(selection)}>
-${getSelectionBody(selection)}
+${selection.content}
 </context_selection>`,
     )
     .join('\n');

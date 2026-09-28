@@ -84,6 +84,63 @@ describe('ContextSelectionsInjector', () => {
     });
   });
 
+  describe('page selections', () => {
+    it('injects the selected text of a page selection without editor node ids', async () => {
+      const injector = new ContextSelectionsInjector({ enabled: true });
+
+      const result = await injector.process(
+        createContext([
+          {
+            content: 'Rewrite this',
+            metadata: {
+              contextSelections: [
+                {
+                  content: 'Pricing starts at $10',
+                  id: 'sel-1',
+                  pageId: 'page-1',
+                  source: 'page',
+                  xml: '<p id="ab12"><span id="cd34">Pricing starts at $10</span></p>',
+                },
+              ],
+            },
+            role: 'user',
+          },
+        ]),
+      );
+
+      expect(result.messages[0].content).toContain('Pricing starts at $10');
+      expect(result.messages[0].content).toContain('source="page"');
+      expect(result.messages[0].content).not.toContain('id="ab12"');
+    });
+
+    it('falls back to legacy pageSelections on messages saved before contextSelections', async () => {
+      const injector = new ContextSelectionsInjector({ enabled: true });
+
+      const result = await injector.process(
+        createContext([
+          {
+            content: 'Shorten this',
+            metadata: {
+              pageSelections: [
+                {
+                  content: 'A long legacy paragraph',
+                  id: 'sel-1',
+                  pageId: 'page-1',
+                  xml: '<p id="ab12">A long legacy paragraph</p>',
+                },
+              ],
+            },
+            role: 'user',
+          },
+        ]),
+      );
+
+      expect(result.messages[0].content).toContain('A long legacy paragraph');
+      expect(result.messages[0].content).toContain('source="page"');
+      expect(result.messages[0].content).not.toContain('id="ab12"');
+    });
+  });
+
   describe('context sources', () => {
     it('should inject code context selections with source metadata', async () => {
       const injector = new ContextSelectionsInjector({ enabled: true });

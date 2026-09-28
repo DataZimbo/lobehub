@@ -1,5 +1,6 @@
 // ============ Initialize Args ============
 export interface InitDocumentArgs {
+  extractTitle?: boolean;
   markdown: string;
 }
 
