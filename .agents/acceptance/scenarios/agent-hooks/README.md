@@ -94,3 +94,5 @@ The continued preflight has now prepared D-owned dependencies, migrated Postgres
 - [Source read failure and recovery](source-read-failure-checkpoint.md): scoped Redis fault, actual Cloud API rejection and same-request recovery, with precise claim boundaries.
 
 - [r28 isolated trusted owner/email delivery](owner-email-checkpoint.md): five real local/queue fixtures; identity product source stays on the separate acceptance branch, broader quality has17 owner-fixture failures.
+
+- [r29 email-wait cancellation failure](email-cancel-checkpoint.md): acknowledged interruption followed by two control HTTP requests and persisted calculator42; linked to existing C07, owner attribution pending.

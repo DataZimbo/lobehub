@@ -143,3 +143,5 @@ additionalContext 随工具记录持久化，转义后投影到后续模型输�
 ## 审批源状态缺失
 
 新建或重建审批 continuation 时，若存在权威的源 operation ID，必须能读取该源运行状态。状态缺失、过期或读取失败会在创建后继消息、发现工具及创建 operation 前明确拒绝，不能当作空 hook 列表继续。通过校验的源快照只读取一次并传给启动流程。旧版审批回滚保留已审阅的工具快照；已经就绪的确定性 continuation 可以复用自己的持久状态，不依赖更早的源状态。此行为不会追溯修复此前已创建的无 hooks continuation，也不会延长状态 TTL 或提供 outbox 保证。
+
+独立 owner / 邮箱候选的已知取消限制：Stop 确认可能早于本地 AbortSignal 生效。r29 在邮箱等待期间确认停止后仍观察到 control HTTP 和工具执行；signal 层取消测试不能替代该产品窗口的验证，详见取消 checkpoint。

@@ -1,8 +1,8 @@
-# Current 31-item coverage — after r23
+# Current 31-item coverage — after r29
 
 This supersedes historical status/gap summaries, without rewriting any round or served SHA. It is a working coverage ledger, **not a published verdict or final acceptance**. `observed` means the bounded outcome has local evidence and is ready for final evidence assessment; it does not mean checker-approved or uploaded. `partial` retains uncovered subcases; `failed` identifies an observed unmet outcome; `blocked` identifies an unavailable prerequisite.
 
-All 31 stable plan IDs are accounted for: 7 observed, 21 partial, 1 failed, 2 blocked. No aggregate pass is claimed.
+All 31 stable plan IDs are accounted for: 6 observed, 21 partial, 2 failed, 2 blocked. No aggregate pass is claimed.
 
 Current local integration: `e1f284d2593a05103665c419fd80bb3c659b4cba` ([r28 contract and separate identity/email checkpoint](owner-email-checkpoint.md)) ([r26 three-tool identity/checks](tool-identity-checkpoint.md), includes [r25 diagnostics](qstash-diagnostics-checkpoint.md)). The ledger below does not prove the newly changed visitor-versus-owner payload identity; its separate r27/r28 observations do not change this original31 ledger. Last served r23 integration: `ab5d35a6d7b4f009866677f4304b29dea9ac0da1`; private Cloud `69c38102cf1af86917737a96aa02829c1e2eadb4`. r23 served this combination; its docs execution head was `2c414d4f`. Earlier evidence retains its own SHA (r7 served `95d4056`, r12 `5b762f88`, r17 `196787ee`, and each linked checkpoint records the rest). Test-only successors do not relabel earlier execution.
 
@@ -32,7 +32,7 @@ Required media are unchanged from [plan.json](plan.json). The table lists those 
 | C04 | partial  | text, screenshot, video | r7 fresh B→C repark→device C; r21 old tokens/revisions/concurrent old actions; r23 real single/partial Web B→C videos    | Card defect repaired and Web repark observed. Lane collision, rewrite-save/pre-repark crash, all mixed surfaces and successful next prompt remain open. |
 | C05 | partial  | text, screenshot        | r1/r7/r12/r21/r23 durable context and original/approval/effective snapshots                                              | Actual next-provider payload/projection dedup matrix and required UI outcome not fully captured; inference unavailable.                                 |
 | C06 | observed | text                    | r1 real protocol/error/timeout/size/context-boundary continue/block matrix                                               | Use operation-correlated final artifacts; early fixture debugging is not separate passing evidence.                                                     |
-| C07 | observed | text, video             | r1 real Web cancellation after HTTP arrival; late-response observation and positive no-Stop; videos                      | Capture used disclosed 20s/30s delay/timeout, not original 1.2s/5s values.                                                                              |
+| C07 | failed   | text, video             | r1 Web delayed-control evidence retained; r29 email wait: Stop acknowledged, then HTTP and calculator42                  | [r29](email-cancel-checkpoint.md) fails after-ACK nonexecution at \~1s; poll-window attribution pending. r1 used20s/30s, not1.2s/5s.                    |
 | D01 | observed | text                    | r1 actual local/queue webhook, dual and handler-only channel behavior                                                    | Transport result independent of later missing-key inference failure.                                                                                    |
 | D02 | blocked  | text                    | r1 local QStash target received actual notifications                                                                     | Managed-cloud QStash credentials/target access missing. Local simulator is not managed delivery evidence.                                               |
 | D03 | partial  | text                    | r1 worker A kill/B replay; r2 ledger lock/checkpoint; r15/r16 reuse/read-recovery scheduling; r21/r23 actual workers     | Combined prep-save/pre-repark crash and all child/approval recovery paths remain open; scheduling-only evidence stays bounded.                          |
@@ -44,12 +44,20 @@ Required media are unchanged from [plan.json](plan.json). The table lists those 
 
 ## Shared current gaps
 
+- Existing C07 now includes the [r29 cancellation failure](email-cancel-checkpoint.md) on the separate new owner/email candidate. Old r1 evidence is not rewritten; no new plan ID or duplicate gap is added. Final interrupted state did not prevent late HTTP/tool execution.
+
 - [Pending skeleton diagnosis](pending-ui-diagnosis.md), linked to existing H08/H09/C04 UI coverage: actual Conversation/SWR characterization reproduces dropped initial synchronization while reconnect is running, then no same-response resync after completion. Six relevant pre-F/current files are byte-identical; targeted old-source/current replay agrees. The live r23 timeline supports this mechanism but lacks a direct callback trace. r21's missing Gateway was an additional environment confounder, not evidence that the parked worker was still running. The [independent frontend owner](session://9b7dcbe2-ea24-4a22-bb52-4c67c8fceb42) owns initial synchronization/reconnect only, in a separate worktree/canary draft; Stop rendering and token routes remain separate. That owner may reuse r24 read-only without operating D services, old cards or DB. No new criterion, duplicate gap, characterization run or pass is added; D/C2 product scope is unchanged.
+
 - Real model access and managed QStash access remain unavailable; no repeated credential request is needed. Seeded `llm_result` is disclosed in every affected round.
+
 - The notification-token browser fallback is an unknown route in the tested deployment (r20), while the actual token API works. Official-source attribution points to an existing Mobile Universal Link consumer; Mobile UI was not executed and is outside this round. This is not attributed to a new Hook route omission or generalized to every remote deployment. [Platform evidence and attribution](cloud-token-checkpoint.md) distinguish coordinator-verified Mobile source from D's local Cloud/AASA inspection. Conversation source cards are reachable with D Agent Gateway and normal reload (r23), but do not substitute for token-link UI.
+
 - Stop leaves stale controls until reload and false Edited/green aggregate afterward. Existing defect attribution is not a UI pass. Missing-source immediate UI error feedback also remains unmet (r12).
+
 - Marketplace does not advertise `cancel_interaction`; real token request is rejected without a claim (r22). Its custom-cancel retry action cannot be honestly tested through that producer. Mixed custom+binary **Stop** is covered separately.
+
 - Cross-user token ACL, full all-approved/all-rejected and heterogeneous action matrices, and several combined crash/lane paths are unexecuted, not silently passed or mislabeled credential blockers. r21/r23 cover homogeneous binary tools with sequential mixed decisions.
+
 - Quality remains separate: r19 complete router 39 tests/lint passed; full type 1444/1444 fails, diagnostics equal only after line/column normalization. No new quality claim is borrowed from C2.
 
 ## Evidence index
