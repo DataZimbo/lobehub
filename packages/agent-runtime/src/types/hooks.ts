@@ -196,7 +196,6 @@ export interface ToolCallHookContext {
   toolMessageId?: string;
   toolSource?: string;
   topicId?: string;
-  /** Session initiator: the share visitor when present, otherwise the run's user. */
   userId?: string;
   workspaceId?: string;
 }
