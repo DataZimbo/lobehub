@@ -1,5 +1,7 @@
 # Fixed 507b integration: complete diff quality scope
 
+Latest test-only supplement: C2 b2e90a13 is present in integration-base1b9106f19829. D adds a scoped36-test/lint pass, with new-base/current types1444/1444 identical and still failed (r9). Production and the84-path scope are unchanged; all r8 execution revisions below remain historical.
+
 The exact requested set is present and pushed in D integration-base `81591e7112181cf29d0564af726ed6946a4acee1`: C2 507b37f9, C1 7a6dd20f through C2, S 76707138, K 5e3a2f73 and L b9fda258. D rechecked each ancestor and both remote branch tips. The checked docs revision is `8e31211ffeafbae9fa89370902b5d3514414c591`; the r7 product was actually served at `95d4056feaf3212683bdde92d0d9cb940618de2e`, before the documentation-only checkpoint. No new app run is implied by this check.
 
 Both 507b merges were conflict-free. Earlier, the de414 docs merge conflicted only with D's temporary RuntimeExecutors fixture; it was resolved to the complete owner file. There is no apps/server or packages delta between D docs and its base.

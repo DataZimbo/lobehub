@@ -2,7 +2,7 @@
 
 Cloud-dependent blocked subcases and the minimal real entry are listed in [cloud-blocked-subcases.md](cloud-blocked-subcases.md). OSS evidence is retained separately; no generic token/UI pass is inferred from the compatibility fallback.
 
-Current status: preparation is complete and bounded product observations are recorded; the full 31-item acceptance is not complete. D draft PR #20137 targets its own integration-base, currently `81591e7112181cf29d0564af726ed6946a4acee1` (C2 507b37f9, fixed C1, S/K/L). See [integration-progress.md](integration-progress.md) and the execution/notification/Stop checkpoints for exact historical execution SHAs and remaining gaps. The initial phase-1 instructions below describe preparation provenance; they do not describe the currently integrated controls as unsupported. No final published acceptance or ready status is claimed.
+Current status: preparation is complete and bounded product observations are recorded; the full 31-item acceptance is not complete. D draft PR #20137 targets its own integration-base, currently `1b9106f1982937214da7d7dda9ce6e81e443e716` (C2 b2e90a13, production unchanged from 507b37f9, fixed C1, S/K/L). See [integration-progress.md](integration-progress.md) and the execution/notification/Stop checkpoints for exact historical execution SHAs and remaining gaps. The initial phase-1 instructions below describe preparation provenance; they do not describe the currently integrated controls as unsupported. No final published acceptance or ready status is claimed.
 
 Latest owner reconciliation: [owner-regression-checkpoint.md](owner-regression-checkpoint.md), 1267 tests/lint passed; full types 1444/1444, identical diagnostics and still failed.
 
