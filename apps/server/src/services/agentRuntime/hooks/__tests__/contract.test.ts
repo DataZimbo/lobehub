@@ -70,7 +70,7 @@ describe('hook registration and restoration', () => {
     const serialized = {
       id: 'tool',
       type: 'afterToolCall' as const,
-      matcher: { identifier: '^fs$' },
+      matcher: '^fs/',
       webhook: { url: '/hook', fallback: 'none' as const },
     };
     dispatcher.register('op', [serialized]);
@@ -94,8 +94,10 @@ describe('hook registration and restoration', () => {
   it.each([
     { id: 'empty', type: 'onComplete' },
     { ...hook, handler: 'not a function' },
-    { ...hook, matcher: {} },
-    { ...hook, type: 'beforeToolCall', matcher: { apiName: '[' } },
+    { ...hook, matcher: '' },
+    { ...hook, matcher: '*' },
+    { ...hook, type: 'beforeToolCall', matcher: { identifier: '^fs$' } },
+    { ...hook, type: 'beforeToolCall', matcher: '[' },
     {
       ...hook,
       type: 'beforeToolCall',
@@ -115,6 +117,33 @@ describe('hook registration and restoration', () => {
       ]),
     ).rejects.toThrow();
   });
+  it('matches a restored queue webhook against the combined tool name', async () => {
+    queueMode.mockReturnValue(true);
+    const dispatcher = new HookDispatcher();
+    const stored: SerializedAgentHook[] = [
+      {
+        id: 'tool',
+        type: 'beforeToolCall',
+        matcher: '^fs/readFile$',
+        webhook: { url: 'https://example.com/hook' },
+      },
+    ];
+    const tool = {
+      apiName: 'readFile',
+      args: {},
+      callIndex: 0,
+      identifier: 'other',
+      operationId: 'op',
+      stepIndex: 0,
+    };
+    await dispatcher.dispatch('op', 'beforeToolCall', tool, stored);
+    expect(safeFetch).not.toHaveBeenCalled();
+    await dispatcher.dispatch('op', 'beforeToolCall', { ...tool, identifier: 'fs' }, stored);
+    expect(safeFetch).toHaveBeenCalledTimes(1);
+    await expect(
+      dispatcher.dispatch('op', 'beforeToolCall', tool, [{ ...stored[0], matcher: '[' }]),
+    ).rejects.toThrow();
+  });
   it('matches local handlers, HTTP notifications and mock callbacks', async () => {
     const dispatcher = new HookDispatcher();
     const handler = vi.fn();
@@ -122,10 +151,10 @@ describe('hook registration and restoration', () => {
       {
         id: 'mock',
         type: 'beforeToolCall',
-        matcher: { identifier: '^fs$', apiName: '^read' },
+        matcher: '^fs/read',
         handler,
       },
-      { ...hook, type: 'beforeToolCall', matcher: { identifier: '^fs$' } },
+      { ...hook, type: 'beforeToolCall', matcher: '^fs/' },
     ]);
     const tool = { apiName: 'readFile', args: {}, callIndex: 0, identifier: 'other', stepIndex: 0 };
     await dispatcher.dispatchBeforeToolCall('op', tool);
@@ -143,35 +172,40 @@ describe('hook registration and restoration', () => {
 });
 
 describe('matcher semantics', () => {
-  it.each([undefined, {}, { identifier: '' }, { apiName: '*' }])(
-    'matches wildcard %#',
-    (matcher) => {
-      expect(matchesHook(matcher, { identifier: 'any', apiName: 'any' })).toBe(true);
-    },
-  );
-  it('requires both expressions and never retains regex state', () => {
-    const matcher = { identifier: '^fs$', apiName: '^read' };
+  it.each([undefined, '', '*'])('matches wildcard %#', (matcher) => {
+    expect(matchesHook(matcher, { identifier: 'any', apiName: 'any' })).toBe(true);
+  });
+  it('matches the combined tool name and never retains regex state', () => {
+    const matcher = '^fs/read';
     for (let i = 0; i < 3; i++)
       expect(matchesHook(matcher, { identifier: 'fs', apiName: 'readFile' })).toBe(true);
     expect(matchesHook(matcher, { identifier: 'fs', apiName: 'writeFile' })).toBe(false);
     expect(matchesHook(matcher, { identifier: 'http', apiName: 'readFile' })).toBe(false);
     expect(matchesHook(matcher, {})).toBe(false);
   });
+  it('supports alternation across the combined identifier/apiName boundary', () => {
+    const matcher = '^(fs/readFile|http/get)$';
+    expect(matchesHook(matcher, { identifier: 'fs', apiName: 'readFile' })).toBe(true);
+    expect(matchesHook(matcher, { identifier: 'http', apiName: 'get' })).toBe(true);
+    expect(matchesHook(matcher, { identifier: 'fs', apiName: 'get' })).toBe(false);
+    expect(matchesHook(matcher, { identifier: 'http', apiName: 'readFile' })).toBe(false);
+    expect(matchesHook('undefined/readFile', { apiName: 'readFile' })).toBe(false);
+  });
 });
 
 describe('registration snapshots', () => {
-  it('does not retain caller-owned webhook or matcher objects', async () => {
+  it('snapshots the matcher value and webhook configuration', async () => {
     queueMode.mockReturnValue(false);
     safeFetch.mockReset().mockImplementation(async () => new Response('{}'));
     const dispatcher = new HookDispatcher();
     const source: AgentHook = {
       id: 'snapshot',
       type: 'beforeToolCall',
-      matcher: { identifier: '^fs$' },
+      matcher: '^fs/',
       webhook: { url: 'https://example.com/original', headers: { 'X-Version': 'original' } },
     };
     dispatcher.register('op', [source]);
-    source.matcher!.identifier = '^other$';
+    source.matcher = '^other/';
     source.webhook!.url = 'https://example.com/changed';
     source.webhook!.headers!['X-Version'] = 'changed';
     await dispatcher.dispatch('op', 'beforeToolCall', {
