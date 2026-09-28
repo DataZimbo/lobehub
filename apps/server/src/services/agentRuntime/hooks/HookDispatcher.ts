@@ -10,6 +10,7 @@ import debug from 'debug';
 
 import { isQueueAgentRuntimeEnabled } from '@/server/services/queue/impls';
 
+import type { HookDeliveryContext } from './deliveryContext';
 import { deliverWebhook, executeToolCallWebhook } from './httpWebhook';
 import { matchesHook } from './matcher';
 import type {
@@ -73,8 +74,17 @@ export class HookDispatcher {
      * runtime-precise {@link SerializedHook} once the type / webhook are checked.
      */
     serializedHooks?: SerializedAgentHook[],
+    /** Trusted runtime owner for this call; not persisted with hook configuration. */
+    deliveryContext?: HookDeliveryContext,
   ): Promise<void> {
-    return this.dispatchHooks(operationId, type, event, serializedHooks);
+    return this.dispatchHooks(
+      operationId,
+      type,
+      event,
+      serializedHooks,
+      undefined,
+      deliveryContext,
+    );
   }
 
   private async dispatchHooks(
@@ -83,6 +93,7 @@ export class HookDispatcher {
     event: AnyHookEvent,
     serializedHooks?: SerializedAgentHook[],
     stopAfterHandler?: () => boolean,
+    deliveryContext?: HookDeliveryContext,
   ): Promise<void> {
     const isQueueMode = isQueueAgentRuntimeEnabled();
     const restored = serializedHooks ? parseSerializedHooks(serializedHooks) : undefined;
@@ -106,10 +117,12 @@ export class HookDispatcher {
         if (useHandler) {
           await handler(event as AgentHookEvent);
         } else if (hook.webhook) {
-          const payload = await this.buildWebhookPayload(event, hook.webhook, {
-            hookId: hook.id,
-            hookType: type,
-          });
+          const payload = await this.buildWebhookPayload(
+            event,
+            hook.webhook,
+            { hookId: hook.id, hookType: type },
+            { deliveryContext },
+          );
           if (payload) {
             delete payload.mock;
             await deliverWebhook(hook.webhook, payload);
@@ -200,6 +213,7 @@ export class HookDispatcher {
     operationId: string,
     event: Omit<ToolCallHookEvent, 'mock' | 'operationId'>,
     serializedHooks?: SerializedAgentHook[],
+    deliveryContext?: HookDeliveryContext,
   ): Promise<{ isMocked: true; result: ToolRunResult } | null> {
     let mockedResult: ToolRunResult | undefined;
     const toolCallEvent: ToolCallHookEvent = {
@@ -217,6 +231,7 @@ export class HookDispatcher {
       toolCallEvent,
       serializedHooks,
       () => !!mockedResult,
+      deliveryContext,
     );
     return mockedResult ? { isMocked: true, result: mockedResult } : null;
   }

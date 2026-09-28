@@ -51,6 +51,16 @@ omits email and leaves control policy unchanged. Cancellation returns `cancelled
 without sending HTTP; a cancelled waiter does not cancel an independent sibling.
 The shared cache is temporary and worker-local, not a persisted identity snapshot.
 
+Notification callers may supply server-only `HookDeliveryContext { ownerUserId }`
+per delivery: the fifth argument of `dispatch` or the fourth argument of
+`dispatchBeforeToolCall`. The private `dispatchHooks` keeps `stopAfterHandler` in
+position five and receives delivery context in position six. No context is stored
+on the dispatcher, serialized with hooks or added to the payload. The shared
+builder authorizes the final user ID before reading its email cache and never
+queries an operation owner. L owns supplying trusted owner context at producers,
+including cold workers. Control preparation keeps its fourth `AbortSignal` and
+uses `{ signal }` without owner context because its final ID is the event user.
+
 ## Temporary C1 response restriction
 
 C1 only implements allow/deny. Even when the shared parser accepts them,
