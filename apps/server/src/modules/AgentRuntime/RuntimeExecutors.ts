@@ -1,5 +1,5 @@
 import type { AgentInstruction, InstructionExecutor } from '@lobechat/agent-runtime';
-import { createAgentRuntimeExecutors } from '@lobechat/agent-runtime';
+import { createAgentRuntimeExecutors, createToolPreparation } from '@lobechat/agent-runtime';
 
 import { buildHost } from './buildHost';
 import type { RuntimeExecutorContext } from './context';
@@ -11,3 +11,6 @@ export const createRuntimeExecutors = (
 ): Partial<Record<AgentInstruction['type'], InstructionExecutor>> => {
   return createAgentRuntimeExecutors(buildHost(ctx));
 };
+
+export const createRuntimeToolPreparation = (ctx: RuntimeExecutorContext) =>
+  createToolPreparation(buildHost(ctx));

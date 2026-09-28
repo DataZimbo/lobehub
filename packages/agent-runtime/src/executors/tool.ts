@@ -1,22 +1,15 @@
 import type { ChatToolPayload, WorkRegistrationIntent } from '@lobechat/types';
 
 import { UsageCounter } from '../core';
-import type {
-  AgentRuntimeHost,
-  ToolRunContext,
-  ToolRunResult,
-  ToolWorkRegistration,
-} from '../transport';
-import type {
-  AgentEvent,
-  AgentInstruction,
-  AgentRuntimeContext,
-  AgentState,
-  InstructionExecutor,
-} from '../types';
-import { extractActivatedSkillsFromMessages, extractTodosFromMessages } from '../utils';
-import { selectToolManifestMap, selectToolSourceMap } from '../utils/operationToolSet';
+import type { AgentRuntimeHost, ToolRunResult, ToolWorkRegistration } from '../transport';
+import type { AgentEvent, AgentInstruction, AgentState, InstructionExecutor } from '../types';
 import { settleAbortedToolRows } from './abortedToolRows';
+import {
+  buildEffectiveManifestMap,
+  createRunContext,
+  prepareToolCalls,
+  resolveToolSource,
+} from './toolPreparation';
 
 const TOOL_EXECUTION_PHASE = 'tool_execution';
 const TOOL_MESSAGE_PERSIST_PHASE = 'tool_message_persist';
@@ -98,38 +91,6 @@ const requireToolTransport = (host: AgentRuntimeHost) => {
   return tools;
 };
 
-const toolNameOf = (tool: ChatToolPayload) => `${tool.identifier}/${tool.apiName}`;
-
-const resolveToolSource = (state: AgentState, tool: ChatToolPayload): string | undefined =>
-  selectToolSourceMap(state)[tool.identifier];
-
-const parseToolArgs = (tool: ChatToolPayload): Record<string, unknown> => {
-  try {
-    if (typeof tool.arguments === 'string') {
-      const parsed = JSON.parse(tool.arguments) as unknown;
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : {};
-    }
-
-    return tool.arguments && typeof tool.arguments === 'object'
-      ? (tool.arguments as Record<string, unknown>)
-      : {};
-  } catch {
-    // Execution still receives the raw arguments; this preview is only for hooks.
-    return {};
-  }
-};
-
-const buildEffectiveManifestMap = (state: AgentState): Record<string, any> => ({
-  ...selectToolManifestMap(state),
-  ...Object.fromEntries(
-    (state.activatedStepTools ?? [])
-      .filter((activation) => activation.manifest)
-      .map((activation) => [activation.id, activation.manifest!]),
-  ),
-});
-
 /**
  * Resource an API call mutates, read from the argument its manifest names in
  * `serializeBy`. Undefined when the API declares none or the argument is not a
@@ -191,67 +152,6 @@ const planBatchLanes = (
   }
 
   return lanes.filter((lane) => lane.length > 0);
-};
-
-const resolveCallIndex = (state: AgentState, toolName: string) => {
-  const existingToolStats = state.usage?.tools?.byTool?.find((tool) => tool.name === toolName);
-  return (existingToolStats?.calls ?? 0) + 1;
-};
-
-const createRunContext = ({
-  host,
-  mode,
-  parentMessageId,
-  reuseExistingMessage,
-  state,
-  stepContext,
-  tool,
-  toolMessageId,
-}: {
-  host: AgentRuntimeHost;
-  mode: ToolRunContext['mode'];
-  parentMessageId: string;
-  reuseExistingMessage?: boolean;
-  state: AgentState;
-  stepContext?: AgentRuntimeContext['stepContext'];
-  tool: ChatToolPayload;
-  toolMessageId?: string;
-}): ToolRunContext => {
-  const toolName = toolNameOf(tool);
-  const toolSource = resolveToolSource(state, tool);
-  const agentConfig = state.world?.agent as
-    { chatConfig?: { toolResultMaxLength?: number } } | undefined;
-
-  return {
-    abortSignal: host.operation.abortSignal,
-    activatedSkills: extractActivatedSkillsFromMessages(state.messages),
-    agentId: host.operation.agentId ?? state.origin?.agentId,
-    assistantMessageId: parentMessageId,
-    callIndex: resolveCallIndex(state, toolName),
-    // Todo state is reconstructed from message history for the same reason the
-    // prompt side does it (`serverCallLlmContextBuilder`): the plan document is
-    // a best-effort mirror that only exists once `createPlan` has run, so the
-    // tool-execution side must not treat it as the source of truth.
-    currentTodos: extractTodosFromMessages(state.messages)?.items,
-    effectiveManifestMap: buildEffectiveManifestMap(state),
-    groupId: host.operation.groupId ?? state.origin?.groupId,
-    messageId: state.origin?.sourceMessageId,
-    mode,
-    operationId: host.operation.operationId,
-    parentMessageId,
-    parsedArgs: parseToolArgs(tool),
-    reuseExistingMessage,
-    state,
-    stepIndex: host.operation.stepIndex,
-    stepContext,
-    threadId: host.operation.threadId ?? state.origin?.threadId,
-    toolMessageId,
-    toolName,
-    toolResultMaxLength: agentConfig?.chatConfig?.toolResultMaxLength,
-    toolSource,
-    topicId: host.operation.topicId ?? state.origin?.topicId,
-    workspaceId: state.origin?.workspaceId ?? host.operation.workspaceId,
-  };
 };
 
 class ToolAbortedError extends Error {
@@ -484,6 +384,9 @@ const createToolMessage = async ({
       parentId: parentMessageId,
       plugin: tool as any,
       pluginError: result.error,
+      ...(result.state?.type === 'blocked' && {
+        pluginIntervention: { rejectedReason: result.state.reason, status: 'rejected' },
+      }),
       pluginState: result.state,
       role: 'tool',
       threadId: host.operation.threadId ?? state.origin?.threadId,
@@ -512,6 +415,12 @@ const updateExistingToolMessage = async ({
       pluginError: result.error,
       pluginState: result.state,
     });
+    if (result.state?.type === 'blocked') {
+      await host.transports.messages.updateToolIntervention(toolMessageId, {
+        rejectedReason: result.state.reason,
+        status: 'rejected',
+      });
+    }
   } catch (error) {
     await publishError(host, error, TOOL_MESSAGE_PERSIST_PHASE);
     throw markPersistFatal(error);
@@ -559,6 +468,13 @@ export const callTool =
     const { payload } = instruction as Extract<AgentInstruction, { type: 'call_tool' }>;
     const tools = requireToolTransport(host);
     const tool = payload.toolCalling;
+    await prepareToolCalls(
+      host,
+      state,
+      [tool],
+      payload.parentMessageId,
+      runtimeContext?.stepContext,
+    );
     const events: AgentEvent[] = [];
     const runContext = createRunContext({
       host,
@@ -577,7 +493,11 @@ export const callTool =
       type: 'tool_start',
     });
 
-    if (runContext.toolSource === 'client' && !tools.canRunClientTools) {
+    if (
+      state.toolPreparations?.[tool.id]?.status !== 'blocked' &&
+      runContext.toolSource === 'client' &&
+      !tools.canRunClientTools
+    ) {
       // Parking is only meaningful if something will come back for it. Once the
       // operation is aborted nothing resumes this run, so the pause would leave
       // the call with no row at all — settle it instead.
@@ -663,7 +583,10 @@ export const callTool =
           executionTime,
           isSuccess,
           attempts: execution.attempts,
-          maxAttempts: (tools.maxRetries ?? DEFAULT_TOOL_MAX_RETRIES) + 1,
+          maxAttempts:
+            executionResult.state?.type === 'blocked'
+              ? 0
+              : (tools.maxRetries ?? DEFAULT_TOOL_MAX_RETRIES) + 1,
           payload,
           phase: TOOL_EXECUTION_PHASE,
           result: redactResultForEvents(executionResult),
@@ -724,7 +647,8 @@ export const callTool =
         type: 'tool_result',
       });
 
-      const toolCost = tools.getCost?.(runContext.toolName) ?? 0;
+      const toolCost =
+        executionResult.state?.type === 'blocked' ? 0 : (tools.getCost?.(runContext.toolName) ?? 0);
       const { usage, cost } = UsageCounter.accumulateTool({
         cost: newState.cost,
         executionTime,
@@ -852,11 +776,16 @@ export const callToolsBatch =
     const existingToolMessageIds = (payload.existingToolMessageIds ?? {}) as Record<string, string>;
     const tools = requireToolTransport(host);
     const events: AgentEvent[] = [];
+    await prepareToolCalls(host, state, toolsCalling, parentMessageId, runtimeContext?.stepContext);
     const clientTools: ChatToolPayload[] = [];
     const serverTools: ChatToolPayload[] = [];
 
     for (const tool of toolsCalling) {
-      if (resolveToolSource(state, tool) === 'client' && !tools.canRunClientTools)
+      if (
+        state.toolPreparations?.[tool.id]?.status !== 'blocked' &&
+        resolveToolSource(state, tool) === 'client' &&
+        !tools.canRunClientTools
+      )
         clientTools.push(tool);
       else serverTools.push(tool);
     }
@@ -962,7 +891,10 @@ export const callToolsBatch =
             executionTime,
             isSuccess,
             attempts: execution.attempts,
-            maxAttempts: (tools.maxRetries ?? DEFAULT_TOOL_MAX_RETRIES) + 1,
+            maxAttempts:
+              executionResult.state?.type === 'blocked'
+                ? 0
+                : (tools.maxRetries ?? DEFAULT_TOOL_MAX_RETRIES) + 1,
             payload: { parentMessageId, toolCalling: tool },
             phase: TOOL_EXECUTION_PHASE,
             result: redactResultForEvents(executionResult),
@@ -1013,7 +945,10 @@ export const callToolsBatch =
           type: 'tool_result',
         });
 
-        const toolCost = tools.getCost?.(runContext.toolName) ?? 0;
+        const toolCost =
+          executionResult.state?.type === 'blocked'
+            ? 0
+            : (tools.getCost?.(runContext.toolName) ?? 0);
         resultEntry.usageParams = {
           executionTime,
           success: isSuccess,

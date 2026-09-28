@@ -82,6 +82,13 @@ export interface ToolRunExecution {
   toolMessageId?: string;
 }
 
+/** Serializable control result. C2 extends this with effective input/context. */
+export interface ToolCallPreparation {
+  originalArgs: Record<string, unknown>;
+  reason?: string;
+  status: 'ready' | 'blocked' | 'cancelled';
+}
+
 /**
  * Per-call context the runtime knows at the moment of a tool call. The heavy
  * server context (tool manifest map, sub-agent / group-member runners, DB
@@ -154,6 +161,8 @@ export interface ToolTransport {
    * {@link ToolRunResult.workRegistration} intent. Called by the executor
    * AFTER usage accumulation so the registration carries the cumulative cost.
    */
+  /** Controls only; must run before permission/approval and lane planning. */
+  prepare?: (call: ChatToolPayload, context: ToolRunContext) => Promise<ToolCallPreparation>;
   registerWork?: (registration: ToolWorkRegistration, state: AgentState) => Promise<void>;
   run: (call: ChatToolPayload, context: ToolRunContext) => Promise<ToolRunExecution>;
   shouldRetry?: (kind: RuntimeRetryKind, attempt: number, maxRetries: number) => boolean;

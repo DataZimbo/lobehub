@@ -5,6 +5,6 @@ export { createAgentStateManager, createStreamEventManager, isRedisAvailable } f
 export { GatewayStreamNotifier } from './GatewayStreamNotifier';
 export { InMemoryAgentStateManager } from './InMemoryAgentStateManager';
 export { InMemoryStreamEventManager } from './InMemoryStreamEventManager';
-export { createRuntimeExecutors } from './RuntimeExecutors';
+export { createRuntimeExecutors, createRuntimeToolPreparation } from './RuntimeExecutors';
 export { StreamEventManager } from './StreamEventManager';
 export type { IAgentStateManager, IStreamEventManager } from './types';

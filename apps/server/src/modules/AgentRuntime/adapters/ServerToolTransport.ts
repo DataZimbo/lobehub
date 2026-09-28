@@ -1,5 +1,6 @@
 import type {
   AgentState,
+  ToolCallPreparation,
   ToolRunContext,
   ToolRunExecution,
   ToolTransport,
@@ -111,9 +112,38 @@ export class ServerToolTransport implements ToolTransport {
     );
   }
 
+  async prepare(call: ChatToolPayload, context: ToolRunContext): Promise<ToolCallPreparation> {
+    const event = buildToolCallHookContext(call, context, this.ctx);
+    if (!this.ctx.hookDispatcher)
+      return { originalArgs: event.originalArgs ?? event.args, status: 'ready' };
+    return this.ctx.hookDispatcher.prepareToolCall(
+      this.ctx.operationId,
+      event,
+      context.state.host?.hooks,
+      context.abortSignal,
+    );
+  }
+
   async run(chatToolPayload: ChatToolPayload, context: ToolRunContext): Promise<ToolRunExecution> {
     const { operationId, serverDB, stepIndex, streamManager, toolExecutionService, userId } =
       this.ctx;
+    const preparation =
+      context.state.toolPreparations?.[chatToolPayload.id] ??
+      (await this.prepare(chatToolPayload, context));
+    context.originalArgs = preparation.originalArgs;
+    if (context.abortSignal?.aborted || preparation.status === 'cancelled')
+      return this.abortedBeforeLaunch();
+    if (preparation.status === 'blocked') {
+      const result = {
+        content: preparation.reason ?? 'Blocked by beforeToolCall hook.',
+        error: 'hook_denied',
+        executionTime: 0,
+        state: { reason: 'hook_denied', type: 'blocked' },
+        success: false,
+      };
+      await this.dispatchAfterToolCall(chatToolPayload, context, result, false);
+      return { attempts: 0, mocked: false, result };
+    }
     const operationLogId = `${operationId}:${stepIndex}`;
     const enabledToolIds = [
       ...selectOperationToolSet(context.state).enabledToolIds,
@@ -132,6 +162,7 @@ export class ServerToolTransport implements ToolTransport {
 
     try {
       const hookResult = await this.dispatchBeforeToolCall(chatToolPayload, context);
+      if (context.abortSignal?.aborted) return this.abortedBeforeLaunch();
       let toolCallMocked = false;
 
       if (isDeviceToolIdentifier(chatToolPayload.identifier) && !hookResult?.isMocked) {
@@ -364,11 +395,7 @@ export class ServerToolTransport implements ToolTransport {
     if (!hookDispatcher) return null;
 
     const event = buildToolCallHookContext(chatToolPayload, context, this.ctx);
-    hookDispatcher
-      .dispatch(operationId, 'beforeToolCall', event, context.state.host?.hooks)
-      .catch(() => {});
-
-    return hookDispatcher.dispatchBeforeToolCall(operationId, event);
+    return hookDispatcher.dispatchBeforeToolCall(operationId, event, context.state.host?.hooks);
   }
 
   private async dispatchAfterToolCall(

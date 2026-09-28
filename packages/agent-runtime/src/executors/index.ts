@@ -7,3 +7,4 @@ export * from './registry';
 export * from './resolveTools';
 export * from './subAgent';
 export * from './tool';
+export * from './toolPreparation';

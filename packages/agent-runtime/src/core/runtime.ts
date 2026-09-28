@@ -104,6 +104,8 @@ export class AgentRuntime {
       // Use provided context or create initial context
       const runtimeContext = context || this.createInitialContext(newState);
 
+      await this.config.prepareTools?.(runtimeContext, newState);
+
       // Get instructions from agent runner and normalize to array
       let rawInstructions: any;
 

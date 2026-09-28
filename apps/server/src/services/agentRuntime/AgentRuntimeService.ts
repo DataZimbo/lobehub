@@ -65,6 +65,7 @@ import { formatErrorForState } from '@/server/modules/AgentRuntime/formatErrorFo
 import { hasNonPersistedMessage } from '@/server/modules/AgentRuntime/messagePersistence';
 import {
   createRuntimeExecutors,
+  createRuntimeToolPreparation,
   type RuntimeExecutorContext,
 } from '@/server/modules/AgentRuntime/RuntimeExecutors';
 import { type IStreamEventManager } from '@/server/modules/AgentRuntime/types';
@@ -4312,6 +4313,7 @@ export class AgentRuntimeService {
     // Create Agent Runtime instance
     const runtime = new AgentRuntime(agent as any, {
       executors: createRuntimeExecutors(executorContext),
+      prepareTools: createRuntimeToolPreparation(executorContext),
     });
 
     return { agent, runtime };

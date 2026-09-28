@@ -29,6 +29,7 @@ import type {
   UserInterventionConfig,
 } from '@lobechat/types';
 
+import type { ToolCallPreparation } from '../transport/tool';
 import type { AgentInstructionRequestHumanApprove } from './instruction';
 import type { Cost, CostLimit, Usage } from './usage';
 
@@ -508,6 +509,11 @@ export interface AgentState {
 
   /** @deprecated Use `operationToolSet.manifestMap`. */
   toolManifestMap?: Record<string, any>;
+
+  /** Assistant owner of the cached preparation; native ids can repeat on later turns. */
+  toolPreparationParentId?: string;
+  /** Serializable control preparation for the current turn, keyed by native call id. */
+  toolPreparations?: Record<string, ToolCallPreparation>;
 
   /** @deprecated Use `operationToolSet.tools`. */
   tools?: any[];

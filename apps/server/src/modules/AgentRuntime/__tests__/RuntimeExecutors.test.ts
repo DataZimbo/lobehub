@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as ContextEngineering from '@/server/modules/Mecha/ContextEngineering';
 import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
+import { HookDispatcher } from '@/server/services/agentRuntime/hooks';
 
 import * as ClientToolDispatch from '../dispatchClientTool';
 import { createRuntimeExecutors, type RuntimeExecutorContext } from '../RuntimeExecutors';
@@ -6022,9 +6023,25 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
     });
 
     describe('call_tool hooks', () => {
+      it('invokes each local before handler once across observation and mock dispatch', async () => {
+        const dispatcher = new HookDispatcher();
+        const handler = vi.fn();
+        dispatcher.register('op-123', [{ id: 'observe-once', type: 'beforeToolCall', handler }]);
+        await createRuntimeExecutors({ ...ctx, hookDispatcher: dispatcher }).call_tool!(
+          createToolInstruction(),
+          createToolState(),
+        );
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(mockToolExecutionService.executeTool).toHaveBeenCalledTimes(1);
+      });
+
       it('should preserve native identity and structured results across tool notifications', async () => {
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockResolvedValue(null),
         };
         const toolResult = {
@@ -6085,11 +6102,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         expect(mockDispatcher.dispatchBeforeToolCall).toHaveBeenCalledWith(
           'op-123',
           expect.objectContaining(identity),
-        );
-        expect(mockDispatcher.dispatch).toHaveBeenCalledWith(
-          'op-123',
-          'beforeToolCall',
-          expect.objectContaining(identity),
           undefined,
         );
         expect(mockDispatcher.dispatch).toHaveBeenCalledWith(
@@ -6110,6 +6122,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       it('should report structured blocked results as unsuccessful notifications, not exceptions', async () => {
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockResolvedValue(null),
         };
         const toolResult = {
@@ -6147,6 +6163,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       it('should correlate repeated tool names in a batch by native call ids', async () => {
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockResolvedValue(null),
         };
         const tool = createToolInstruction().payload.toolCalling;
@@ -6185,6 +6205,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       it('should retain client routing and structured client results in notifications', async () => {
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockResolvedValue(null),
         };
         const result = {
@@ -6227,6 +6251,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       it('should dispatch beforeToolCall and afterToolCall hooks', async () => {
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockResolvedValue(null),
         };
 
@@ -6242,6 +6270,7 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
             callIndex: 1,
             identifier: 'twitter',
           }),
+          undefined,
         );
 
         // afterToolCall dispatched via dispatch()
@@ -6266,6 +6295,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         const controller = new AbortController();
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockImplementation(async () => {
             controller.abort();
             return null;
@@ -6295,6 +6328,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         // webhook consumer would see `afterToolCall` after `onComplete`.
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockResolvedValue(null),
         };
 
@@ -6326,6 +6363,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       it('should skip real execution when beforeToolCall returns mock', async () => {
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockResolvedValue({
             isMocked: true,
             result: { content: '{"mocked":true}', success: true },
@@ -6360,6 +6401,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       it('should preserve failed mock results without executing the real tool', async () => {
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockResolvedValue({
             isMocked: true,
             result: { content: 'fixture error', error: 'fixture error', success: false },
@@ -6398,6 +6443,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
 
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockResolvedValue(null),
         };
 
@@ -6425,6 +6474,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       it('should derive callIndex from state.usage.tools.byTool', async () => {
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockResolvedValue(null),
         };
 
@@ -6438,6 +6491,7 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         expect(mockDispatcher.dispatchBeforeToolCall).toHaveBeenCalledWith(
           'op-123',
           expect.objectContaining({ callIndex: 1 }),
+          undefined,
         );
 
         // Second call: state reflects 1 prior call → callIndex = 2
@@ -6456,6 +6510,7 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         expect(mockDispatcher.dispatchBeforeToolCall).toHaveBeenLastCalledWith(
           'op-123',
           expect.objectContaining({ callIndex: 2 }),
+          undefined,
         );
       });
 
@@ -6472,6 +6527,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       it('should dispatch beforeCompact and afterCompact hooks', async () => {
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockResolvedValue(null),
         };
 
@@ -6510,6 +6569,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       it('should dispatch beforeHumanIntervention hook', async () => {
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
+          prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+            originalArgs: event.args,
+            status: 'ready',
+          })),
           dispatchBeforeToolCall: vi.fn().mockResolvedValue(null),
         };
 

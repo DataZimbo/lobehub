@@ -1,15 +1,16 @@
-import type { ToolRunResult } from '@lobechat/agent-runtime';
+import type { ToolCallPreparation, ToolRunResult } from '@lobechat/agent-runtime';
 import type { SerializedAgentHook } from '@lobechat/types';
 import {
   agentHookMatcherSchema,
   agentHookTypeSchema,
+  resolveToolCallHookErrorPolicy,
   serializedAgentHookSchema,
 } from '@lobechat/types';
 import debug from 'debug';
 
 import { isQueueAgentRuntimeEnabled } from '@/server/services/queue/impls';
 
-import { deliverWebhook } from './httpWebhook';
+import { deliverWebhook, executeToolCallWebhook } from './httpWebhook';
 import { matchesHook } from './matcher';
 import type {
   AgentHook,
@@ -34,20 +35,9 @@ export class CriticalHookDeliveryError extends Error {
 
 export { deliverWebhook } from './httpWebhook';
 
-export class UnsupportedControlHookError extends Error {
-  constructor() {
-    super('toolCall hooks are unsupported until the tool preparation pipeline is integrated');
-    this.name = 'UnsupportedControlHookError';
-  }
-}
-
-/** Validate persisted configurations before selecting an event, never silently discard controls. */
+/** Validate persisted configurations on every worker restore. */
 export function parseSerializedHooks(hooks: SerializedAgentHook[]): SerializedHook[] {
-  return hooks.map((hook) => {
-    const parsed = serializedAgentHookSchema.parse(hook);
-    if (parsed.webhook.responseHandling === 'toolCall') throw new UnsupportedControlHookError();
-    return parsed;
-  });
+  return hooks.map((hook) => serializedAgentHookSchema.parse(hook));
 }
 
 function buildWebhookPayload(event: AnyHookEvent, eventFields?: string[]): Record<string, unknown> {
@@ -61,6 +51,7 @@ function buildWebhookPayload(event: AnyHookEvent, eventFields?: string[]): Recor
   }
 
   const payload = { ...event };
+  if ('mock' in payload) delete (payload as { mock?: unknown }).mock;
   if ('finalState' in payload) {
     delete (payload as { finalState?: unknown }).finalState;
   }
@@ -97,6 +88,16 @@ export class HookDispatcher {
      */
     serializedHooks?: SerializedAgentHook[],
   ): Promise<void> {
+    return this.dispatchHooks(operationId, type, event, serializedHooks);
+  }
+
+  private async dispatchHooks(
+    operationId: string,
+    type: AgentHookType,
+    event: AnyHookEvent,
+    serializedHooks?: SerializedAgentHook[],
+    stopAfterHandler?: () => boolean,
+  ): Promise<void> {
     const isQueueMode = isQueueAgentRuntimeEnabled();
     const restored = serializedHooks ? parseSerializedHooks(serializedHooks) : undefined;
 
@@ -105,9 +106,16 @@ export class HookDispatcher {
       ? (restored ?? this.getSerializedHooks(operationId) ?? [])
       : (registered ?? restored ?? []);
     let criticalError: CriticalHookDeliveryError | undefined;
-    for (const hook of hooks.filter((h) => h.type === type && matchesHook(h.matcher, event))) {
+    for (const hook of hooks.filter(
+      (h) =>
+        h.type === type &&
+        h.webhook?.responseHandling !== 'toolCall' &&
+        matchesHook(h.matcher, event),
+    )) {
       const handler = 'handler' in hook ? hook.handler : undefined;
       const useHandler = !isQueueMode && !!handler;
+      // Preserve first-mock handler semantics without dropping independent HTTP callbacks.
+      if (useHandler && stopAfterHandler?.()) continue;
       try {
         if (useHandler) {
           await handler(event as AgentHookEvent);
@@ -132,50 +140,88 @@ export class HookDispatcher {
     if (criticalError) throw criticalError;
   }
 
-  /**
-   * Dispatch beforeToolCall hooks with mock support.
-   * Returns mock result if any handler called event.mock(), otherwise null.
-   */
+  /** Ordered synchronous controls. Cancellation never goes through onError. */
+  async prepareToolCall(
+    operationId: string,
+    event: Omit<ToolCallHookEvent, 'mock'>,
+    serializedHooks?: SerializedAgentHook[],
+    signal?: AbortSignal,
+  ): Promise<ToolCallPreparation> {
+    const originalArgs = structuredClone(event.originalArgs ?? event.args);
+    const ready: ToolCallPreparation = { originalArgs, status: 'ready' };
+    const restored = serializedHooks ? parseSerializedHooks(serializedHooks) : undefined;
+    const hooks = isQueueAgentRuntimeEnabled()
+      ? (restored ?? this.getSerializedHooks(operationId) ?? [])
+      : (this.hooks.get(operationId) ?? restored ?? []);
+    for (const hook of hooks) {
+      if (signal?.aborted) return { originalArgs, status: 'cancelled' };
+      if (
+        hook.type !== 'beforeToolCall' ||
+        hook.webhook?.responseHandling !== 'toolCall' ||
+        !matchesHook(hook.matcher, event)
+      )
+        continue;
+      const response = await executeToolCallWebhook(
+        hook.webhook,
+        {
+          ...event,
+          hookId: hook.id,
+          hookType: 'beforeToolCall',
+        },
+        { signal },
+      );
+      if (signal?.aborted || response.status === 'cancelled')
+        return { originalArgs, status: 'cancelled' };
+      // C1 supports decisions only. C2 removes this guard when input/context are integrated.
+      const unsupported =
+        response.status === 'success' &&
+        (response.decision?.updatedInput !== undefined ||
+          response.decision?.additionalContext !== undefined);
+      if (response.status === 'error' || unsupported) {
+        if (resolveToolCallHookErrorPolicy(hook.webhook.onError).action === 'block') {
+          return {
+            originalArgs,
+            status: 'blocked',
+            reason: unsupported ? 'unsupported_control_response' : 'hook_control_error',
+          };
+        }
+        continue;
+      }
+      if (response.decision?.permissionDecision === 'deny') {
+        return {
+          originalArgs,
+          status: 'blocked',
+          reason: response.decision.permissionDecisionReason ?? 'Blocked by beforeToolCall hook.',
+        };
+      }
+    }
+    return signal?.aborted ? { originalArgs, status: 'cancelled' } : ready;
+  }
+
+  /** Deliver each observation once; only local handlers can supply a mock. */
   async dispatchBeforeToolCall(
     operationId: string,
     event: Omit<ToolCallHookEvent, 'mock' | 'operationId'>,
-  ): Promise<{
-    isMocked: true;
-    result: ToolRunResult;
-  } | null> {
-    const hooks =
-      this.hooks
-        .get(operationId)
-        ?.filter(
-          (h) => h.type === 'beforeToolCall' && h.handler && matchesHook(h.matcher, event),
-        ) || [];
-    if (hooks.length === 0) return null;
-
-    let isMocked = false;
+    serializedHooks?: SerializedAgentHook[],
+  ): Promise<{ isMocked: true; result: ToolRunResult } | null> {
     let mockedResult: ToolRunResult | undefined;
-
     const toolCallEvent: ToolCallHookEvent = {
       ...event,
       mock: (result) => {
-        if (isMocked) return false;
-        isMocked = true;
+        if (mockedResult) return false;
         mockedResult = result;
         return true;
       },
       operationId,
     };
-
-    for (const hook of hooks) {
-      try {
-        log('[%s][beforeToolCall] Dispatching: %s', operationId, hook.id);
-        await hook.handler?.(toolCallEvent as any);
-      } catch {
-        log('[%s][beforeToolCall] Hook error (non-fatal): %s', operationId, hook.id);
-      }
-      if (isMocked) break;
-    }
-
-    return isMocked && mockedResult ? { isMocked: true, result: mockedResult } : null;
+    await this.dispatchHooks(
+      operationId,
+      'beforeToolCall',
+      toolCallEvent,
+      serializedHooks,
+      () => !!mockedResult,
+    );
+    return mockedResult ? { isMocked: true, result: mockedResult } : null;
   }
 
   /**
@@ -253,10 +299,8 @@ export class HookDispatcher {
           type: hook.type,
           webhook: hook.webhook,
         });
-        if (parsed.webhook.responseHandling === 'toolCall') {
-          if (hook.handler) throw new Error('Control hooks cannot have a handler');
-          throw new UnsupportedControlHookError();
-        }
+        if (parsed.webhook.responseHandling === 'toolCall' && hook.handler)
+          throw new Error('Control hooks cannot have a handler');
         return { ...parsed, handler: hook.handler } as AgentHook;
       } else if (!hook.handler) {
         throw new Error('A hook requires a handler or webhook');

@@ -707,14 +707,22 @@ export class GeneralChatAgent implements Agent {
           context.payload as GeneralAgentCallLLMResultPayload;
 
         if (hasToolsCalling && toolsCalling && toolsCalling.length > 0) {
-          const { allowedTools, blockedTools } = this.partitionToolsByAllowList(toolsCalling);
+          const hookBlockedTools = toolsCalling.filter(
+            (tool) => state.toolPreparations?.[tool.id]?.status === 'blocked',
+          );
+          const { allowedTools, blockedTools } = this.partitionToolsByAllowList(
+            toolsCalling.filter((tool) => state.toolPreparations?.[tool.id]?.status !== 'blocked'),
+          );
           // Check which tools need human intervention
           const [toolsNeedingIntervention, toolsToExecute] = await this.checkInterventionNeeded(
             allowedTools,
             state,
           );
 
-          const instructions: AgentInstruction[] = [];
+          const instructions: AgentInstruction[] = hookBlockedTools.map((toolCalling) => ({
+            type: 'call_tool',
+            payload: { parentMessageId, toolCalling },
+          }));
 
           // Execute tools that don't need intervention first
           // These will run immediately before any approval requests
