@@ -19,6 +19,7 @@ import type {
   SerializedHook,
   ToolCallHookEvent,
 } from './types';
+import { createWebhookPayloadBuilder } from './webhookPayload';
 
 const log = debug('lobe-server:hook-dispatcher');
 
@@ -50,23 +51,6 @@ export function parseSerializedHooks(hooks: SerializedAgentHook[]): SerializedHo
   });
 }
 
-function buildWebhookPayload(event: AnyHookEvent, eventFields?: string[]): Record<string, unknown> {
-  if (eventFields) {
-    const payload: Record<string, unknown> = {};
-    for (const field of eventFields) {
-      if (field === 'finalState') continue;
-      if (field in event) payload[field] = (event as unknown as Record<string, unknown>)[field];
-    }
-    return payload;
-  }
-
-  const payload = { ...event };
-  if ('finalState' in payload) {
-    delete (payload as { finalState?: unknown }).finalState;
-  }
-  return payload;
-}
-
 /**
  * HookDispatcher — central hub for registering and dispatching agent lifecycle hooks
  *
@@ -75,6 +59,8 @@ function buildWebhookPayload(event: AnyHookEvent, eventFields?: string[]): Recor
  *   delivered via HTTP POST or QStash
  */
 export class HookDispatcher {
+  private readonly buildWebhookPayload = createWebhookPayloadBuilder();
+
   /**
    * In-memory hook store (local mode)
    * Maps operationId → AgentHook[]
@@ -112,12 +98,11 @@ export class HookDispatcher {
         if (useHandler) {
           await handler(event as AgentHookEvent);
         } else if (hook.webhook) {
-          await deliverWebhook(hook.webhook, {
-            ...buildWebhookPayload(event, hook.webhook.eventFields),
+          const payload = await this.buildWebhookPayload(event, hook.webhook, {
             hookId: hook.id,
             hookType: type,
-            ...hook.webhook.body,
           });
+          if (payload) await deliverWebhook(hook.webhook, payload);
         }
       } catch (error) {
         if (!useHandler && hook.webhook?.fallback === 'none') {

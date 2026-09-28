@@ -12,6 +12,7 @@ export type {
   AgentHookEvent,
   AgentHookType,
   AgentHookWebhook,
+  AgentHookWebhookPayload,
   NotificationWebhook,
   SerializedHook,
 } from './types';
