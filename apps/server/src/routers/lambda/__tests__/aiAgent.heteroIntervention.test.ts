@@ -201,12 +201,14 @@ describe('aiAgentRouter — remote Human-in-the-loop', () => {
     operationId: string;
     ownerUserId?: string;
     toolCallId: string;
+    topicId?: string;
   }) => {
     const ownerUserId = params.ownerUserId ?? userId;
     await serverDB.insert(messages).values({
       content: '',
       id: params.messageId,
       role: 'tool',
+      topicId: params.topicId,
       userId: ownerUserId,
     });
     await serverDB.insert(messagePlugins).values({
@@ -789,8 +791,14 @@ describe('aiAgentRouter — remote Human-in-the-loop', () => {
       await serverDB
         .insert(agentOperations)
         .values({ id: operationId, topicId, userId, status: 'waiting_for_human' });
-      await insertPendingTool({ batchId, messageId, operationId, toolCallId: 'native-stop' });
-      await serverDB.update(messages).set({ topicId }).where(eq(messages.id, messageId));
+      await insertPendingTool({
+        batchId,
+        messageId,
+        operationId,
+        toolCallId: 'native-stop',
+        topicId,
+      });
+      const messageModel = new MessageModel(serverDB, userId);
       const operationModel = new AgentOperationModel(serverDB, userId);
       const runtime = new AgentRuntimeService(serverDB, userId);
       runtime.loadInterventionContinuationState = vi.fn().mockResolvedValue({
@@ -810,7 +818,7 @@ describe('aiAgentRouter — remote Human-in-the-loop', () => {
         agentOperationModel: operationModel,
         agentRuntimeService: runtime,
         db: serverDB,
-        messageModel: new MessageModel(serverDB, userId),
+        messageModel,
         resolveDeviceWorkspaceId: async () => undefined,
         threadModel: new ThreadModel(serverDB, userId),
         topicModel: new TopicModel(serverDB, userId),
@@ -972,16 +980,20 @@ describe('aiAgentRouter — remote Human-in-the-loop', () => {
           expect(businessV2.rollbackAgentInterventionResolution).not.toHaveBeenCalled();
         }
         // A foreign checkpoint cannot complete this resolution or steal its delivery.
-        await serverDB
-          .update(agentOperations)
-          .set({ metadata: { pendingStopHookBatchId: 'other-batch' } })
-          .where(eq(agentOperations.id, operationId));
+        expect(
+          await operationModel.recordCompletion(operationId, {
+            pendingStopHookBatchId: 'other-batch',
+            status: 'interrupted',
+          }),
+        ).toBe(true);
         await expect(invoke()).rejects.toThrow('provenance conflict');
         expect(hookFetch).toHaveBeenCalledTimes(2);
-        await serverDB
-          .update(agentOperations)
-          .set({ metadata: { pendingStopHookBatchId: batchId } })
-          .where(eq(agentOperations.id, operationId));
+        expect(
+          await operationModel.recordCompletion(operationId, {
+            pendingStopHookBatchId: batchId,
+            status: 'interrupted',
+          }),
+        ).toBe(true);
         vi.mocked(runtime.loadInterventionContinuationState).mockResolvedValueOnce(null);
         await expect(invoke()).rejects.toThrow('state is unavailable');
         expect(hookFetch).toHaveBeenCalledTimes(2);
