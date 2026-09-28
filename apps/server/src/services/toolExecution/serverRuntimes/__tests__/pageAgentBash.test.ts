@@ -215,4 +215,14 @@ describe('runPageBash', () => {
     expect(errors).toEqual([]);
     expect(state.exitCode).toBe(0);
   });
+
+  it('decodes non-ASCII text written through a redirect as UTF-8', async () => {
+    const page = setup('café price $10 for alice\n');
+
+    await page.run(
+      `awk '{gsub(/\\$10/, "\\xe2\\x82\\xac70"); gsub(/alice/, "张三"); print}' /doc.xml > /tmp/n && cp /tmp/n /doc.xml`,
+    );
+
+    expect(page.markdown()).toBe('café price €70 for 张三');
+  });
 });

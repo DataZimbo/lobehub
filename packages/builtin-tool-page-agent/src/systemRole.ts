@@ -21,6 +21,7 @@ export const systemPrompt = `You read and edit the current page through one tool
 - <root> wraps the top-level blocks: p, h1-h6, ul/ol/li, table, blockquote, pre, hr, img, file.
 - Keep the id attribute on every existing block you keep. A block without an id is inserted as new; a block whose id disappears is removed.
 - Write new blocks without id attributes and without <span>. Use <b>, <i>, <u>, <s>, <a> for inline formatting.
+- Write non-ASCII text (¥, €, 中文) literally in the command; never spell it as byte escapes like \\xe2\\x82\\xac.
 - Ids are valid only for the page state you just read. After a write the tool prints a refreshed outline; use those ids and never reuse ids from older output.
 - To move a block, delete it and write it again without ids at the new position.
 </litexml_rules>

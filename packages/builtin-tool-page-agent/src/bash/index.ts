@@ -71,10 +71,28 @@ const MIN_SIZE_LIMIT = 2 * 1024 * 1024;
 const isTooLarge = (next: string, previous: string) =>
   next.length > Math.max(4 * previous.length, MIN_SIZE_LIMIT);
 
+const strictUtf8 = new TextDecoder('utf-8', { fatal: true });
+const UTF8_BYTE_SEQUENCE =
+  /[\u00C2-\u00DF][\u0080-\u00BF]|[\u00E0-\u00EF][\u0080-\u00BF]{2}|[\u00F0-\u00F4][\u0080-\u00BF]{3}/g;
+
+// just-bash stores bytes a command wrote through a redirect (awk "\xe2\x82\xac")
+// as one char per byte, while literal text stays as real chars, so a read-back
+// file can mix both. Only sequences that are valid UTF-8 are decoded; a lone
+// Latin-1 char such as "é" is not one and stays as is.
+// ponytail: page text that genuinely contains mojibake like "Ã©" would be decoded too.
+const decodeByteSequences = (text: string) =>
+  text.replaceAll(UTF8_BYTE_SEQUENCE, (bytes) => {
+    try {
+      return strictUtf8.decode(Uint8Array.from(bytes, (char) => char.charCodeAt(0)));
+    } catch {
+      return bytes;
+    }
+  });
+
 const readIfExists = async (
   fs: { exists: (path: string) => Promise<boolean>; readFile: (path: string) => Promise<string> },
   path: string,
-) => ((await fs.exists(path)) ? fs.readFile(path) : undefined);
+) => ((await fs.exists(path)) ? decodeByteSequences(await fs.readFile(path)) : undefined);
 
 export const runPageBash = async (
   runtime: EditorRuntime,
