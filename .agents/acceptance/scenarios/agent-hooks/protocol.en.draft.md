@@ -133,3 +133,7 @@ Compression notifications are awaited, so a slow receiver adds latency. Notifica
 ## Coverage limits
 
 The integration covers tools controlled by the server Runtime, including its client/device forwarding paths. It does not instrument an independent client Runtime or tools inside heterogeneous Agents. No global mandatory governance, automatic child inheritance, output rewriting, outbox or exactly-once delivery is provided. Final documentation must be checked against the coordinator's integrated revision and real local/queue/device/Web outcomes before publication.
+
+## Missing approval source state
+
+An approval continuation with an authoritative source operation requires its saved runtime state when creating or rebuilding the continuation. Missing or expired state causes an explicit startup failure; it is not treated as an empty hook list. Legacy approval rollback preserves the reviewed tool snapshot. A ready deterministic continuation may reuse its own saved state even if the older source has expired. This does not repair previously created hookless continuations, extend the state TTL, or provide an outbox guarantee.

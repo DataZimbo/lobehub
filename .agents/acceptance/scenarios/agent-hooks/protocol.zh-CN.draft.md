@@ -133,3 +133,7 @@ additionalContext 随工具记录持久化，转义后投影到后续模型输�
 ## 覆盖限制
 
 覆盖服务端 Runtime 管理的工具，包括其客户端 / 设备转发路径；不覆盖独立客户端 Runtime 或异构 Agent 内部工具。不提供全局强制治理、自动子继承、输出改写、outbox 或 exactly-once。发布前须对协调给出的最终集成版本及真实 local/queue/device/Web 结果逐项核实。
+
+## 审批源状态缺失
+
+新建或重建审批 continuation 时，若存在权威的源 operation ID，必须能读取该源运行状态。状态缺失或过期会明确导致启动失败，不能当作空 hook 列表继续。旧版审批回滚保留已审阅的工具快照；已经就绪的确定性 continuation 可以复用自己的持久状态，不依赖更早的源状态。此行为不会追溯修复此前已创建的无 hooks continuation，也不会延长状态 TTL 或提供 outbox 保证。
