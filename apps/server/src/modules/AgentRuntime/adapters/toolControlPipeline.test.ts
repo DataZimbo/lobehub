@@ -1,7 +1,6 @@
-import type { AgentRuntimeHost, AgentState, ToolCallHookEvent } from '@lobechat/agent-runtime';
+import type { AgentState, ToolCallHookEvent } from '@lobechat/agent-runtime';
 import {
   AgentRuntime,
-  createAgentRuntimeExecutors,
   createRunContext,
   createToolPreparation,
   GeneralChatAgent,
@@ -12,10 +11,8 @@ import type { ChatToolPayload, UIChatMessage } from '@lobechat/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentHook } from '@/server/services/agentRuntime/hooks';
-import { HookDispatcher } from '@/server/services/agentRuntime/hooks';
 
-import type { RuntimeExecutorContext } from '../context';
-import { ServerToolTransport } from './ServerToolTransport';
+import { setupToolControlPipeline as setup } from './toolControlTestFixture';
 
 const { fetchHook, getEmailsByIds, queueMode } = vi.hoisted(() => ({
   fetchHook: vi.fn(),
@@ -42,6 +39,7 @@ vi.mock('@/database/models/agent', () => ({
 }));
 vi.mock('../executorHelpers', () => ({
   archiveRuntimeToolResult: async (result: unknown) => result,
+  buildPostProcessUrl: () => undefined,
   buildServerAgentMemberRunner: () => undefined,
   buildServerVirtualSubAgentRunner: () => undefined,
   GEN_AI_FUNCTION_TOOL_TYPE: 'function',
@@ -70,105 +68,6 @@ const response = (permissionDecision: 'allow' | 'deny') =>
       hookSpecificOutput: { hookEventName: 'beforeToolCall', permissionDecision },
     }),
   );
-
-function setup(hooks: AgentHook[], signal?: AbortSignal, restore = false) {
-  const registered = new HookDispatcher();
-  registered.register('op', hooks);
-  const dispatcher = restore ? new HookDispatcher() : registered;
-  const execute = vi.fn().mockResolvedValue({ content: 'executed', success: true });
-  const rows: Record<string, unknown>[] = [];
-  const state: AgentState = {
-    cost: {
-      calculatedAt: '',
-      currency: 'USD',
-      llm: { byModel: [], currency: 'USD', total: 0 },
-      tools: { byTool: [], currency: 'USD', total: 0 },
-      total: 0,
-    },
-    usage: {
-      humanInteraction: {
-        approvalRequests: 0,
-        promptRequests: 0,
-        selectRequests: 0,
-        totalWaitingTimeMs: 0,
-      },
-      llm: { apiCalls: 0, processingTimeMs: 0, tokens: { input: 0, output: 0, total: 0 } },
-      tools: { byTool: [], totalCalls: 0, totalTimeMs: 0 },
-    },
-    createdAt: '',
-    lastModified: '',
-    messages: [],
-    operationId: 'op',
-    status: 'running',
-    stepCount: 0,
-    origin: { agentId: 'agent', topicId: 'topic' },
-    // Serialize to model a worker boundary, not merely an in-memory clone.
-    // eslint-disable-next-line unicorn/prefer-structured-clone
-    host: { hooks: JSON.parse(JSON.stringify(registered.getSerializedHooks('op') ?? [])) },
-    userInterventionConfig: { approvalMode: 'auto-run' },
-  };
-  const streamManager = {} as RuntimeExecutorContext['streamManager'];
-  const transport = new ServerToolTransport({
-    operationId: 'op',
-    stepIndex: 1,
-    userId: 'user',
-    hookDispatcher: dispatcher,
-    abortSignal: signal,
-    serverDB: {},
-    streamManager,
-    toolExecutionService: { executeTool: execute },
-  } as unknown as RuntimeExecutorContext);
-  const host: AgentRuntimeHost = {
-    operation: { operationId: 'op', stepIndex: 1, agentId: 'agent', abortSignal: signal },
-    transports: {
-      tools: transport,
-      messages: {
-        createToolMessage: vi.fn(async (row) => {
-          const saved = { ...row, id: `row-${rows.length + 1}` };
-          rows.push(saved);
-          return saved;
-        }),
-        query: vi.fn(async () => rows),
-        updateToolCall: vi.fn(async (id, args, preparation) => {
-          const row = rows.find((row) => row.id === id);
-          if (row) {
-            row.plugin = { ...(row.plugin as object), arguments: args };
-            row.pluginState = {
-              ...(row.pluginState as object),
-              hookPreparation: structuredClone(preparation),
-            };
-          }
-        }),
-        updateToolMessage: vi.fn(async (id, params) => {
-          const row = rows.find((row) => row.id === id);
-          if (row)
-            Object.assign(row, params, {
-              pluginState: { ...(row.pluginState as object), ...params.pluginState },
-            });
-        }),
-        updateToolIntervention: vi.fn(async (id, intervention) => {
-          const row = rows.find((row) => row.id === id);
-          if (row) row.pluginIntervention = intervention;
-        }),
-        deleteMessage: vi.fn(),
-        update: vi.fn(),
-        findToolMessageIdByToolCallId: vi.fn(),
-      } as unknown as AgentRuntimeHost['transports']['messages'],
-      stream: { publishEvent: vi.fn(), publishChunk: vi.fn() },
-    },
-  };
-  const executors = createAgentRuntimeExecutors(host);
-  const runtime = new AgentRuntime(new GeneralChatAgent({ operationId: 'op' }), {
-    executors,
-    prepareTools: createToolPreparation(host),
-  });
-  const step = (calls = [call()]) =>
-    runtime.step(state, {
-      phase: 'llm_result',
-      payload: { hasToolsCalling: true, parentMessageId: 'assistant', toolsCalling: calls },
-    });
-  return { dispatcher, execute, executors, host, rows, runtime, state, step, streamManager };
-}
 
 beforeEach(() => {
   getEmailsByIds.mockReset().mockResolvedValue([]);
@@ -307,6 +206,44 @@ describe('beforeToolCall control pipeline', () => {
     ]);
     expect(result.events.some((event) => event.type === 'human_approve_required')).toBe(false);
   });
+
+  it.each(['llm_result', 'human_approved_tool'] as const)(
+    'checks persisted cancellation before using cached preparation in %s',
+    async (phase) => {
+      const fixture = setup([control()], undefined, false, {
+        checkToolCancellation: async () => true,
+        serverPreparation: true,
+      });
+      fixture.state.userInterventionConfig = { approvalMode: 'manual' };
+      fixture.state.toolPreparationParentId = 'assistant';
+      fixture.state.toolPreparations = {
+        'native-1': {
+          originalArgs: { path: 'a' },
+          effectiveArgs: { path: 'b' },
+          approvalArgs: { path: 'b' },
+          additionalContexts: [{ hookId: 'control', text: 'retained' }],
+          status: 'ready',
+        },
+      };
+      const result = await fixture.runtime.step(fixture.state, {
+        phase,
+        payload: {
+          parentMessageId: 'assistant',
+          toolsCalling: [call()],
+          approvedToolCall: call(),
+          hasToolsCalling: true,
+        },
+      });
+      expect(fetchHook).not.toHaveBeenCalled();
+      expect(fixture.execute).not.toHaveBeenCalled();
+      expect(result.events.some((event) => event.type === 'human_approve_required')).toBe(false);
+      expect(fixture.state.toolPreparations['native-1']).toMatchObject({
+        originalArgs: { path: 'a' },
+        effectiveArgs: { path: 'b' },
+        approvalArgs: { path: 'b' },
+      });
+    },
+  );
 
   it('allow still requires product approval', async () => {
     const fixture = setup([control()]);

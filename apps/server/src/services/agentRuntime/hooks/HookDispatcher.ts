@@ -165,6 +165,7 @@ export class HookDispatcher {
     event: ToolCallControlEvent,
     serializedHooks?: SerializedAgentHook[],
     signal?: AbortSignal,
+    checkCancellation?: () => Promise<boolean>,
   ): Promise<ToolCallPreparation> {
     const originalArgs = structuredClone(event.originalArgs);
     const ready: ToolCallPreparation = {
@@ -184,6 +185,7 @@ export class HookDispatcher {
         !matchesHook(hook.matcher, event)
       )
         continue;
+      if (await checkCancellation?.()) return { originalArgs, status: 'cancelled' };
       const payload = await this.buildWebhookPayload(
         {
           ...event,
@@ -194,9 +196,10 @@ export class HookDispatcher {
         { hookId: hook.id, hookType: 'beforeToolCall' },
         { signal },
       );
-      if (!payload || signal?.aborted) return { originalArgs, status: 'cancelled' };
+      if (!payload || signal?.aborted || (await checkCancellation?.()))
+        return { originalArgs, status: 'cancelled' };
       const response = await executeToolCallWebhook(hook.webhook, payload, { signal });
-      if (signal?.aborted || response.status === 'cancelled')
+      if (signal?.aborted || response.status === 'cancelled' || (await checkCancellation?.()))
         return { originalArgs, status: 'cancelled' };
       if (response.status === 'error') {
         if (resolveToolCallHookErrorPolicy(hook.webhook.onError).action === 'block') {
