@@ -10,9 +10,23 @@ import {
   deriveAgentInterventionContinuationOperationId,
   deriveAgentInterventionQueueDeduplicationId,
 } from '@/business/server/agent-run/agentInterventionIdentity';
+import { AgentOperationModel } from '@/database/models/agentOperation';
+import { MessageModel } from '@/database/models/message';
+import { ThreadModel } from '@/database/models/thread';
+import { TopicModel } from '@/database/models/topic';
+import { AgentRuntimeService } from '@/server/services/agentRuntime';
+import { InterventionController } from '@/server/services/aiAgent/intervention/InterventionController';
 
 import { aiAgentRouter } from '../aiAgent';
 import { cleanupTestUser, createTestUser } from './integration/setup';
+
+const customIntervention = vi.hoisted(() => vi.fn());
+vi.mock('@/business/server/agent-run/executeCustomIntervention', () => ({
+  executeAgentMarketplaceIntervention: customIntervention,
+}));
+
+const hookFetch = vi.hoisted(() => vi.fn());
+vi.mock('@lobechat/ssrf-safe-fetch', () => ({ ssrfSafeFetch: hookFetch }));
 
 const business = vi.hoisted(() => ({
   getHeteroInterventionReview: vi.fn(),
@@ -752,6 +766,179 @@ describe('aiAgentRouter — remote Human-in-the-loop', () => {
       topicId: 'topic-stop',
     });
   });
+
+  it.each([
+    { entry: 'source', fallback: 'none' },
+    { entry: 'review', fallback: 'none' },
+    { entry: 'custom', fallback: 'none' },
+    { entry: 'source', fallback: undefined },
+  ] as const)(
+    'keeps durable Stop retryable until notification consumption: $entry/$fallback',
+    async ({ entry, fallback }) => {
+      const { agentOperations } = await import('@/database/schemas');
+      const operationId = `op-critical-stop-${entry}-${fallback ?? 'ordinary'}`;
+      const topicId = 'topic-critical-stop';
+      const messageId = 'message-critical-stop';
+      const batchId = 'batch-critical-stop';
+      const resolutionRequestId = '018fbd8e-7baf-7c6d-8000-000000000030';
+      await serverDB.insert(topics).values({ id: topicId, userId });
+      await serverDB
+        .insert(agentOperations)
+        .values({ id: operationId, topicId, userId, status: 'waiting_for_human' });
+      await insertPendingTool({ batchId, messageId, operationId, toolCallId: 'native-stop' });
+      await serverDB.update(messages).set({ topicId }).where(eq(messages.id, messageId));
+      const operationModel = new AgentOperationModel(serverDB, userId);
+      const runtime = new AgentRuntimeService(serverDB, userId);
+      runtime.loadInterventionContinuationState = vi.fn().mockResolvedValue({
+        origin: { topicId, userId },
+        host: {
+          hooks: [
+            {
+              id: 'critical-stop',
+              type: 'onStopByHumanIntervention',
+              webhook: { url: 'https://hooks.example/stop', fallback },
+            },
+          ],
+        },
+      });
+      runtime.interruptOperation = vi.fn().mockResolvedValue(true);
+      const controller = new InterventionController({
+        agentOperationModel: operationModel,
+        agentRuntimeService: runtime,
+        db: serverDB,
+        messageModel: new MessageModel(serverDB, userId),
+        resolveDeviceWorkspaceId: async () => undefined,
+        threadModel: new ThreadModel(serverDB, userId),
+        topicModel: new TopicModel(serverDB, userId),
+        userId,
+      });
+      aiAgentService.stopPendingApproval.mockImplementation((input) =>
+        controller.stopPendingApproval(input),
+      );
+      let published = false;
+      const finalStatus = entry === 'custom' ? 'cancelled' : 'stopped';
+      customIntervention.mockResolvedValue({ content: 'cancelled' });
+      const claimed = {
+        claimId: 'claim-critical-stop',
+        contractVersion: 2 as const,
+        handled: true as const,
+        ownerUserId: userId,
+        resolutionRequestId,
+        state: 'claimed' as const,
+        runtimeAction:
+          entry === 'custom'
+            ? {
+                type: 'execute_custom_interaction' as const,
+                handler: 'agent_marketplace' as const,
+                agentId: 'agent-custom',
+                appContext: { topicId },
+                input: {
+                  action: { type: 'cancelled' as const },
+                  categoryHints: [],
+                  requestId: 'marketplace-request',
+                },
+                batchId,
+                operationId,
+                parentMessageId: messageId,
+                toolCallId: 'native-stop',
+                toolMessageIds: [messageId],
+              }
+            : {
+                type: 'stop' as const,
+                batchId,
+                operationId,
+                topicId,
+                toolMessageIds: [messageId],
+                terminalStatus: 'stopped' as const,
+              },
+      };
+      // Cloud owns claims/publication. Its boundary returns the same resolving
+      // request until publication, then already_resolved (as in D's real route).
+      const resolve = async () =>
+        published ? { handled: true, state: 'already_resolved', status: finalStatus } : claimed;
+      businessV2.resolveAgentInterventionBySource.mockImplementation(resolve);
+      businessV2.resolveAgentIntervention.mockImplementation(resolve);
+      businessV2.onAgentInterventionResolutionPublished.mockImplementation(async () => {
+        published = true;
+      });
+      const invoke = () =>
+        entry !== 'review'
+          ? userCaller().resolveAgentInterventionBySource({
+              action:
+                entry === 'custom'
+                  ? { type: 'cancel_interaction' }
+                  : { scope: 'operation', type: 'stop' },
+              batchId,
+              operationId,
+              resolutionRequestId,
+              targets: [{ toolCallId: 'native-stop', toolMessageId: messageId }],
+            })
+          : userCaller().resolveAgentIntervention({
+              action: { scope: 'operation', type: 'stop' },
+              resolutionRequestId,
+              reviewToken: 's'.repeat(43),
+              expectedBatchVersion: 1,
+              expectedRequestRevisions: { item: { hash: 'a'.repeat(64), version: 1 } },
+            });
+      hookFetch.mockImplementation(async () => new Response('', { status: 503 }));
+      if (fallback === 'none') {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          await expect(invoke()).rejects.toThrow('Critical webhook delivery failed');
+          expect(hookFetch).toHaveBeenCalledTimes(attempt);
+          expect(published).toBe(false);
+          expect(await operationModel.findById(operationId)).toMatchObject({
+            status: 'interrupted',
+            metadata: { pendingStopHookBatchId: batchId },
+          });
+          expect(businessV2.onAgentInterventionResolutionPublished).not.toHaveBeenCalled();
+          expect(businessV2.rollbackAgentInterventionResolution).not.toHaveBeenCalled();
+        }
+        // A foreign checkpoint cannot complete this resolution or steal its delivery.
+        await serverDB
+          .update(agentOperations)
+          .set({ metadata: { pendingStopHookBatchId: 'other-batch' } })
+          .where(eq(agentOperations.id, operationId));
+        await expect(invoke()).rejects.toThrow('provenance conflict');
+        expect(hookFetch).toHaveBeenCalledTimes(2);
+        await serverDB
+          .update(agentOperations)
+          .set({ metadata: { pendingStopHookBatchId: batchId } })
+          .where(eq(agentOperations.id, operationId));
+        vi.mocked(runtime.loadInterventionContinuationState).mockResolvedValueOnce(null);
+        await expect(invoke()).rejects.toThrow('state is unavailable');
+        expect(hookFetch).toHaveBeenCalledTimes(2);
+        hookFetch.mockImplementation(async () => new Response('{}'));
+        // Delivery followed by a lost checkpoint is retryable, never published
+        // early. Re-delivery here is the documented non-exactly-once window.
+        const consume = vi.spyOn(operationModel, 'completeStopHookNotification');
+        consume.mockResolvedValueOnce(false);
+        await expect(invoke()).rejects.toThrow('completion was not persisted');
+        expect(published).toBe(false);
+        expect(businessV2.onAgentInterventionResolutionPublished).not.toHaveBeenCalled();
+        consume.mockRestore();
+      }
+      await expect(invoke()).resolves.toMatchObject({ success: true, status: finalStatus });
+      const deliveries = hookFetch.mock.calls.length;
+      expect(deliveries).toBe(fallback === 'none' ? 4 : 1);
+      expect(
+        (await operationModel.findById(operationId))?.metadata?.pendingStopHookBatchId,
+      ).toBeUndefined();
+      // Both completed Cloud resolution and a lost publication response must not
+      // deliver a successful stop again.
+      await expect(invoke()).resolves.toMatchObject({ success: true });
+      published = false;
+      await expect(invoke()).resolves.toMatchObject({ success: true });
+      expect(hookFetch).toHaveBeenCalledTimes(deliveries);
+      expect(runtime.interruptOperation).toHaveBeenCalledTimes(1);
+      expect(customIntervention).toHaveBeenCalledTimes(entry === 'custom' ? 1 : 0);
+      expect(aiAgentService.execAgent).not.toHaveBeenCalled();
+      expect(aiAgentService.ensureInterventionContinuationStarted).not.toHaveBeenCalled();
+      expect(businessV2.rollbackAgentInterventionResolution).not.toHaveBeenCalled();
+      expect(await new MessageModel(serverDB, userId).findMessagePlugin(messageId)).toMatchObject({
+        intervention: { status: 'aborted', resolutionRequestId },
+      });
+    },
+  );
 
   it('restores the authoritative page/task message-map context for a runtime resume', async () => {
     const reviewToken = 'd'.repeat(43);

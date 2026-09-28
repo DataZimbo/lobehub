@@ -174,6 +174,13 @@ resolution request can retry this direct dispatch while the operation remains
 `interrupted`, loading the original host hooks from existing runtime state. If
 that state is unavailable, retry fails explicitly instead of reporting delivery
 success. A successful normal replay sees no pending marker and sends nothing.
+The generic source and Review-token routers also treat an interrupted operation
+with a matching pending marker as prepared, not dispatched. They propagate the
+failure and keep the existing resolution claim retryable; only marker consumption
+permits publishing the completed Review. A different pending batch fails closed.
+Custom cancellation retries only its stop/checkpoint, without repeating its
+marketplace action. Already-published resolutions from older buggy routers are
+not reopened or migrated by this change.
 The stop is never rolled back, and no continuation is started. Legacy terminal
 rows without a marker do not synthesize a notice. An unacknowledged stop or failed
 terminal write sends none. Ordinary modern reject does not fabricate a stop; the
