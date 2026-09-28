@@ -13,6 +13,87 @@ import {
 } from './humanInterventionHooks';
 
 describe('human intervention notification payloads', () => {
+  it('carries the real origin through all three events and uses the actual operation', () => {
+    const origin = {
+      agentId: 'agent',
+      documentId: 'document',
+      groupId: 'group',
+      lineage: { parentOperationId: 'actual-parent' },
+      sessionId: 'session',
+      sourceMessageId: 'source-user-message',
+      taskId: 'task',
+      threadId: 'thread',
+      topicId: 'topic',
+      userId: 'origin-user',
+      workspaceId: 'workspace',
+    };
+    const context = buildHumanInterventionHookContext(
+      { origin },
+      { operationId: 'actual-operation', userId: 'operation-user' },
+    );
+    const expected = {
+      agentId: 'agent',
+      documentId: 'document',
+      groupId: 'group',
+      operationId: 'actual-operation',
+      parentOperationId: 'actual-parent',
+      sessionId: 'session',
+      sourceMessageId: 'source-user-message',
+      taskId: 'task',
+      threadId: 'thread',
+      topicId: 'topic',
+      userId: 'operation-user',
+      workspaceId: 'workspace',
+    };
+    expect(context).toEqual(expected);
+    const events = [
+      buildBeforeHumanInterventionEvent({ ...context, stepIndex: 3 }, []),
+      buildAfterHumanInterventionEvent(context, { action: 'approve', toolCallIds: ['native'] }),
+      buildStopByHumanInterventionEvent(context, {
+        reason: 'human_rejected',
+        toolCallIds: ['native'],
+      }),
+    ];
+    for (const event of events) expect(event).toMatchObject(expected);
+    expect(
+      buildHumanInterventionHookContext({ origin }, { operationId: 'actual-operation' }).userId,
+    ).toBe('origin-user');
+    expect(origin.lineage).toEqual({ parentOperationId: 'actual-parent' });
+  });
+
+  it('snapshots final effective arguments and complete native ids from pending approval payloads', () => {
+    const pending = ['native-second', 'native-first'].map((id, index) => ({
+      apiName: 'write',
+      arguments: JSON.stringify({ path: `/effective/${index}`, options: { overwrite: false } }),
+      id,
+      identifier: 'files',
+      type: 'builtin' as const,
+    }));
+    const event = buildBeforeHumanInterventionEvent(
+      { assistantMessageId: 'approval-owner', operationId: 'op', stepIndex: 3 },
+      pending,
+    );
+    expect(event.pendingTools).toEqual(
+      pending.map((tool) => ({
+        apiName: 'write',
+        args: JSON.parse(tool.arguments),
+        arguments: tool.arguments,
+        identifier: 'files',
+        toolCallId: tool.id,
+      })),
+    );
+    const firstArguments = pending[0].arguments;
+    pending[0].arguments = '{"path":"later"}';
+    pending.pop();
+    expect(event.pendingTools).toHaveLength(2);
+    expect(event.pendingTools[0].arguments).toBe(firstArguments);
+    expect(event.pendingTools[0].args).toEqual({
+      path: '/effective/0',
+      options: { overwrite: false },
+    });
+    expect(event.assistantMessageId).toBe('approval-owner');
+  });
+
   it.each(['approve', 'reject', 'rejectAndContinue'] as const)(
     'preserves every native id for batch %s',
     (action) => {
