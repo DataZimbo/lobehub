@@ -68,7 +68,7 @@
       "category": "人工审批",
       "title": "审批看到的是待执行参数",
       "verifier": "agent",
-      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。触发真实审批，截审批卡及beforeHumanIntervention；含两个同名不同id工具。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。",
+      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。触发真实审批，截审批卡及beforeHumanIntervention；含两个同名不同id工具。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 补充approval-repark.md：部分批准后hook改写触发重新审批，截图核对同assistant剩余siblings集合及新card的effective args。",
       "expected": "pendingTools的原生id和最终参数逐一匹配审批UI。",
       "requiredEvidence": ["text", "screenshot"]
     },
@@ -77,7 +77,7 @@
       "category": "人工审批",
       "title": "批准与拒绝能恢复并通知",
       "verifier": "agent",
-      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。分别走旧审批resume和现代continuation；approve/reject/rejectAndContinue，单项与混合batch。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 必跑all-approved/all-rejected/mixed批次；在实际claim/persistence seam失败并证明rollback后重试，复用同一continuation。按native ID核action-specific resolved IDs与实际停止pending IDs；仅effective resolution发通知，rollback不提前报成功，continuation reuse不重复，普通reject不误发stop；与queue replay分开计数。",
+      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。分别走旧审批resume和现代continuation；approve/reject/rejectAndContinue，单项与混合batch。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 必跑all-approved/all-rejected/mixed批次；在实际claim/persistence seam失败并证明rollback后重试，复用同一continuation。按native ID核action-specific resolved IDs与实际停止pending IDs；仅effective resolution发通知，rollback不提前报成功，continuation reuse不重复，普通reject不误发stop；与queue replay分开计数。 按approval-repark.md覆盖部分/混合批准后的重新审批与并发旧卡操作；按最终有效decision核通知，repark、旧token失效或claim失败不得伪造成功/stop。",
       "expected": "afterHumanIntervention动作/原因/单id兼容、完整toolCallIds；持久hooks恢复；UI及父回复符合所选动作。",
       "requiredEvidence": ["text", "screenshot"]
     },
@@ -86,7 +86,7 @@
       "category": "人工审批",
       "title": "用户停止后不会重新启动",
       "verifier": "agent",
-      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。两套审批路径选择stop，混合batch含已批准/待批准项；随后刷新。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 对照普通reject/rejectAndContinue的stop事件计数为0，明确all-approved/all-rejected/mixed分支及停止时实际pending集合；rollback/reused continuation不得误发stop。",
+      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。两套审批路径选择stop，混合batch含已批准/待批准项；随后刷新。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 对照普通reject/rejectAndContinue的stop事件计数为0，明确all-approved/all-rejected/mixed分支及停止时实际pending集合；rollback/reused continuation不得误发stop。 重新审批后核实际有效pending集合；并发旧卡stop不得复活旧batch或使siblings丢失，只有有效停止决定发stop，repark本身不发stop。",
       "expected": "onStopByHumanIntervention携完整关联和原因；终态稳定，未执行工具无副作用。",
       "requiredEvidence": ["text", "screenshot"]
     },
@@ -176,7 +176,7 @@
       "category": "人工审批",
       "title": "改写参数贯穿权限审批与执行lane",
       "verifier": "agent",
-      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。原参数A改写B，两个原本不同资源改写到同资源；审批卡核B，实际执行和后置事件核B。恢复时服务再改为C。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 旧审批resume和现代continuation各执行原始输入重新准备、参数改变后旧批准失效；对同名不同ID及混合batch保留独立批准身份。",
+      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。原参数A改写B，两个原本不同资源改写到同资源；审批卡核B，实际执行和后置事件核B。恢复时服务再改为C。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 旧审批resume和现代continuation各执行原始输入重新准备、参数改变后旧批准失效；对同名不同ID及混合batch保留独立批准身份。 按approval-repark.md：只批准原batch部分成员，再改写使其旧批准失效；核同assistant pending siblings不丢失、已完成/终结成员不重跑、新card/effective args一致。旧token不能批准新参数或复活旧batch；对部分/混合处理与并发旧卡approve/reject/stop保存真实时序、最终集合及副作用计数。新接口以C2最终提交为准。",
       "expected": "updatedInput完整替换；权限、序列化、lane串行、真实副作用均用最终参数。批准恢复以originalArgs重新检查，不叠加；变化使旧批准失效。",
       "requiredEvidence": ["text", "screenshot"]
     },
