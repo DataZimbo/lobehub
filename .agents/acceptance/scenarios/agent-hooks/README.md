@@ -8,7 +8,7 @@ Latest r22: [custom contract and mixed Stop](cloud-custom-checkpoint.md) confirm
 
 Cloud-dependent blocked subcases and the minimal real entry are listed in [cloud-blocked-subcases.md](cloud-blocked-subcases.md). OSS evidence is retained separately; no generic token/UI pass is inferred from the compatibility fallback.
 
-Current published integration-base is `e1f284d2593a05103665c419fd80bb3c659b4cba` (fixed C2bb74 and preceding stack); docs `d6ebfdc3` was also pushed/read back. L identity remains on the separate acceptance branch. [r28/r31](owner-email-checkpoint.md) records target357 tests/lint and the subsequent two-file owner-fixture repair:263 tests/lint pass, full type still1444. r28/r29 product execution remains on f5ad; r23 stays Cloud69c/OSSab5. PR #20137 remains draft, its latest body synchronization was blocked, and acceptance is incomplete.
+Current published integration-base is `6b492211582e19df5cebca45e41ab09fd24df576`, containing C2's persisted cancellation checks. L identity remains separate; r33 executed acceptance1f49 (same tree as L25031). [r33](cancel-fix-checkpoint.md) records six bounded real Redis/HTTP observations and target546/acceptance549 tests plus lint; full type still1444. PR #20137 remains draft. Historical r28/r29 stay at f5ad and r23 stays Cloud69c/OSSab5; the new report does not relabel those executions.
 
 Current r20/r21 supplement: [real token Stop](cloud-token-checkpoint.md) verifies actual notification-token critical retry (500→500→200→replay, HTTP receipts 1→2→3→3). [Partial Review](cloud-partial-checkpoint.md) verifies authenticated token claims, actual local queue workers, B→C repark with pending sibling retained, old-token terminal no-ops, stale-revision 409, reject/approve/Stop IDs and no tool side effects. Both served private Cloud `69c38102` + OSS `ab5d35a6d7`. The actual token Web URL is an unknown route; pending chat remained a skeleton and final cancelled/rejected tools still show false Edited/+1. These API results are not complete UI or inference passes. Current quality is **1444 base / 1444 current** type diagnostics, still failed; full text matches after line/column normalization. The five new test diagnostics were removed by C2 32d0c692; its complete router file has 39 tests/lint passed.
 
@@ -93,6 +93,8 @@ The continued preflight has now prepared D-owned dependencies, migrated Postgres
 
 - [Source read failure and recovery](source-read-failure-checkpoint.md): scoped Redis fault, actual Cloud API rejection and same-request recovery, with precise claim boundaries.
 
-- [r28 isolated trusted owner/email delivery](owner-email-checkpoint.md): five real local/queue fixtures; identity product source stays on the separate acceptance branch, historical17 owner-fixture failures are resolved by r31 (263 tests/lint); full type and r29 product cancellation still fail.
+- [r28 isolated trusted owner/email delivery](owner-email-checkpoint.md): five real local/queue fixtures; identity product source stays on the separate acceptance branch, historical17 owner-fixture failures are resolved by r31 (263 tests/lint); full type still fails; historical r29 failure has a separate bounded r33 follow-up.
 
-- [r29 email-wait cancellation failure](email-cancel-checkpoint.md): acknowledged interruption followed by two control HTTP requests and persisted calculator42; linked to existing C07, owner attribution pending.
+- [r29 email-wait cancellation failure](email-cancel-checkpoint.md): acknowledged interruption followed by two control HTTP requests and persisted calculator42; linked to existing C07, historical failure preserved; C2 repair and r33 follow-up are separate.
+
+- [r33 persisted cancellation repair](cancel-fix-checkpoint.md): real Redis/HTTP, distinct interruption process, controls-between and observation-before-launch cases; no queue-callback/Web claim or final checker.
