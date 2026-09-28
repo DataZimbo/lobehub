@@ -11,6 +11,7 @@ Status: preparation only. Starting revision `66af6210de918a26394f9afe5a389ac99c3
 - `self-check.ts`: verifies fixture server behavior only; does not exercise LobeHub.
 - `protocol.{en,zh-CN}.draft.md`: unpublished bilingual drafts, eventual location `docs/development/basic/agent-runtime-hooks{,.zh-CN}.mdx` after final verification.
 - `environment.md`: observed prerequisites and exact remaining gaps.
+- `environment-step2.md`: latest infrastructure results, dedicated gateway/device identity, service commands and remaining model/managed-QStash requirements.
 - `.acceptances/hooks-d-phase1/`: ignored preflight output and checker notes. Final product runs get a separate immutable round directory.
 
 Phase 1 is complete when the checker findings are resolved, fixture smoke works, environment gaps have evidence and commands, and coordinator receives the paths. No product pass, final report ingestion, branch integration, or public PR in this phase.

@@ -2,6 +2,8 @@
 
 This supersedes `environment.md`'s first-pass snapshot. No `execAgent` invocation, final Hook acceptance, branch integration or public PR was performed.
 
+Latest continuation: `environment-step2.md` records repeated environment/quality checks and newly verified official local gateways plus real CLI-device marker write/read. It supersedes the device gap in this earlier table and supplies gateway startup/teardown commands.
+
 | Item            | Verified state                                                                                                                               | Boundary                                                                                     |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | Source          | D's own F66af6210-based preparation branch                                                                                                   | Final integrated revision still comes from coordinator                                       |
