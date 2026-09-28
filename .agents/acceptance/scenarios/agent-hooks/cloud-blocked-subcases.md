@@ -1,4 +1,6 @@
-# Cloud-dependent blocked subcases
+# Cloud-dependent subcases
+
+Latest actual runtime result (r14): [Cloud source Review checkpoint](cloud-review-checkpoint.md) serves private Cloud `69c38102` with nested OSS `5b762f884d`. Real Cloud persistence and authenticated source read/Stop APIs now work; the ordinary Stop/replay result is observed. Critical 503 still incorrectly returns success through the generic router and prevents retry despite a pending marker: **failed**, not an environment blocker. Pending card/token/partial/mixed/reapproval remain unverified; the cancelled UI still falsely shows Edited. Historical environment-blocked statements below retain their original round scope and do not supersede r14.
 
 Latest compatibility result (r13): official `f722d1c1da509c0893b7367b6ce7653a60dd3ebb` (Cloud PR1795) is applied in full to D's private copy, producing `69c38102cf1af86917737a96aa02829c1e2eadb4`. All seven files/12 additions/26 deletions match the upstream patch byte-for-byte; the preexisting isolation-only workspace edits are retained unstaged. Installed UI 5.51.2 satisfies ^5.50.0, so no install occurred. Nested OSS remains `1b9106f1982937214da7d7dda9ce6e81e443e716` as required for this compatibility-only follow-up. No original Cloud checkout or Hook product file changed.
 

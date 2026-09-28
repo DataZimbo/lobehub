@@ -1,5 +1,7 @@
 # Integrated execution checkpoint (not a final acceptance)
 
+Latest r14 Cloud follow-up: [real source Review checkpoint](cloud-review-checkpoint.md) records durable pending Review creation, authenticated source read, successful ordinary Stop/replay, and a **newly observed generic-router critical Stop false-success/retry failure** on OSS `5b762f884d` + private Cloud `69c38102`. Reported to C2/coordinator; no final approval or product repair in D. Historical per-case observations below retain their stated SHA.
+
 Stop UI attribution update: C2's fixed base/current characterization confirms that stale pending cards after successful Stop and args-derived Edited/green-line summaries are pre-existing. They remain uncorrected and the complete Stop UI criterion is non-pass. See [stop-ui-attribution.md](stop-ui-attribution.md). This does not change historical evidence provenance or downgrade the current integration to the attribution's older SHA.
 
 Latest affected-path supplement: [cold-card-checkpoint.md](cold-card-checkpoint.md) records the repaired B projection and fresh B→C Web/device flow, plus a newly observed missing-source hooks failure. The r1 table below retains its original SHA and historical observations.
