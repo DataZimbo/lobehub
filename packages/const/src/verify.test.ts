@@ -10,6 +10,8 @@ import type {
   VerifierType,
   VerifyCheckResultStatus,
   VerifyEvidenceCapturedBy,
+  VerifyEvidenceChapter as VerifyEvidenceChapterType,
+  VerifyEvidenceChapterKind,
   VerifyEvidenceType,
   VerifyOnFailStrategy,
   VerifyRunOrigin as VerifyRunOriginType,
@@ -34,6 +36,8 @@ import type {
   verifierTypes,
   verifyCheckResultStatuses,
   verifyEvidenceCapturedBy,
+  VerifyEvidenceChapter,
+  verifyEvidenceChapterKinds,
   verifyEvidenceTypes,
   verifyOnFailStrategies,
   VerifyRunOrigin,
@@ -44,7 +48,12 @@ import type {
   verifyUserDecisions,
   verifyVerdicts,
 } from './verify';
-import { isProgrammaticTestCheck, normalizeVerifySurface } from './verify';
+import {
+  isProgrammaticTestCheck,
+  normalizeEvidenceMetadata,
+  normalizeVerifySurface,
+  readEvidenceChapters,
+} from './verify';
 
 /**
  * `@lobechat/types` declares these unions independently — it cannot import them
@@ -71,6 +80,10 @@ describe('verify vocabulary', () => {
       (typeof verifyEvidenceCapturedBy)[number]
     >().toEqualTypeOf<VerifyEvidenceCapturedBy>();
     expectTypeOf<VerifyRunOrigin>().toEqualTypeOf<VerifyRunOriginType>();
+    expectTypeOf<
+      (typeof verifyEvidenceChapterKinds)[number]
+    >().toEqualTypeOf<VerifyEvidenceChapterKind>();
+    expectTypeOf<VerifyEvidenceChapter>().toEqualTypeOf<VerifyEvidenceChapterType>();
     expectTypeOf<(typeof acceptanceSubjectTypes)[number]>().toEqualTypeOf<AcceptanceSubjectType>();
     expectTypeOf<(typeof acceptanceStatuses)[number]>().toEqualTypeOf<AcceptanceStatus>();
     expectTypeOf<
@@ -158,5 +171,74 @@ describe('isProgrammaticTestCheck', () => {
   it('is false for an empty or absent name', () => {
     expect(isProgrammaticTestCheck()).toBe(false);
     expect(isProgrammaticTestCheck('', undefined, null)).toBe(false);
+  });
+});
+
+describe('readEvidenceChapters', () => {
+  it('keeps well-formed markers sorted by time and trims their text', () => {
+    expect(
+      readEvidenceChapters({
+        chapters: [
+          { kind: 'check', note: '  no skeleton  ', t: 7.9 },
+          { kind: 'step', label: 'Scroll #1', t: 2 },
+          { kind: 'flag', note: 'request count 0 → 1', t: 7 },
+        ],
+      }),
+    ).toEqual([
+      { kind: 'step', label: 'Scroll #1', t: 2 },
+      { kind: 'flag', note: 'request count 0 → 1', t: 7 },
+      { kind: 'check', note: 'no skeleton', t: 7.9 },
+    ]);
+  });
+
+  it('drops markers that cannot be placed or say nothing, instead of failing', () => {
+    expect(
+      readEvidenceChapters([
+        { kind: 'step', t: 1 }, // a step needs a label
+        { kind: 'check', label: 'only a label', t: 2 }, // a claim needs a note
+        { kind: 'guess', note: 'unknown kind', t: 3 },
+        { kind: 'flag', note: 'negative', t: -1 },
+        { kind: 'flag', note: 'not a number', t: '4' },
+        null,
+      ]),
+    ).toBeUndefined();
+    expect(readEvidenceChapters({ comparison: {} })).toBeUndefined();
+    expect(readEvidenceChapters('chapters')).toBeUndefined();
+  });
+
+  it('caps a runaway list at 100 markers', () => {
+    const chapters = Array.from({ length: 150 }, (_, i) => ({
+      kind: 'step',
+      label: `#${i}`,
+      t: i,
+    }));
+    expect(readEvidenceChapters(chapters)).toHaveLength(100);
+  });
+});
+
+describe('normalizeEvidenceMetadata', () => {
+  const chapters = [
+    { kind: 'step', label: 'Open', t: 0 },
+    { kind: 'check', t: 1 },
+  ];
+
+  it('keeps only valid chapters on a video and leaves other keys alone', () => {
+    expect(normalizeEvidenceMetadata({ chapters, comparison: { id: 'a' } }, 'video')).toEqual({
+      chapters: [{ kind: 'step', label: 'Open', t: 0 }],
+      comparison: { id: 'a' },
+    });
+  });
+
+  it('strips chapters from media without a timeline', () => {
+    expect(normalizeEvidenceMetadata({ chapters, comparison: { id: 'a' } }, 'screenshot')).toEqual({
+      comparison: { id: 'a' },
+    });
+    expect(normalizeEvidenceMetadata({ chapters }, 'screenshot')).toBeNull();
+  });
+
+  it('passes metadata without chapters through untouched', () => {
+    const metadata = { comparison: { id: 'a' } };
+    expect(normalizeEvidenceMetadata(metadata, 'video')).toBe(metadata);
+    expect(normalizeEvidenceMetadata(undefined, 'video')).toBeUndefined();
   });
 });
