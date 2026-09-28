@@ -19,7 +19,7 @@ describe('serialized hook contract', () => {
   it('round trips all fields including legacy fallback without expanding secrets', () => {
     const hook = {
       ...control,
-      matcher: { identifier: '^fs$', apiName: 'read.*' },
+      matcher: '^fs/read.*',
       webhook: {
         ...control.webhook,
         allowedEnvVars: ['HOOK_KEY'],
@@ -52,8 +52,8 @@ describe('serialized hook contract', () => {
   it.each([
     { ...control, type: 'afterToolCall' },
     { ...control, type: 'unknown' },
-    { ...control, matcher: { identifier: '[' } },
-    { ...control, type: 'beforeStep', matcher: {} },
+    { ...control, matcher: '[' },
+    { ...control, matcher: { identifier: '^fs$', apiName: '^read' } },
     ...[
       { delivery: 'qstash' },
       { eventFields: [] },
@@ -69,6 +69,29 @@ describe('serialized hook contract', () => {
     ].map((webhook) => ({ ...control, webhook: { ...control.webhook, ...webhook } })),
   ])('rejects invalid persisted configuration %#', (hook) => {
     expect(serializedAgentHookSchema.safeParse(hook).success).toBe(false);
+  });
+  it.each(['', '*', '^fs/readFile$'])(
+    'round trips a string matcher %j on every tool event',
+    (matcher) => {
+      for (const type of ['beforeToolCall', 'afterToolCall', 'onToolCallError']) {
+        const hook = { id: 'tool', matcher, type, webhook: { url: '/hook' } };
+        expect(serializedAgentHookSchema.parse(hook)).toEqual(hook);
+      }
+    },
+  );
+  it.each(['', '*', '^fs/readFile$'])('rejects a matcher %j on every non-tool event', (matcher) => {
+    for (const type of agentHookTypeSchema.options.filter(
+      (name) => !['beforeToolCall', 'afterToolCall', 'onToolCallError'].includes(name),
+    )) {
+      expect(
+        serializedAgentHookSchema.safeParse({
+          id: 'notification',
+          matcher,
+          type,
+          webhook: { url: '/hook' },
+        }).success,
+      ).toBe(false);
+    }
   });
   it('disallows blocking notification errors', () => {
     expect(agentHookWebhookSchema.safeParse({ url: '/hook', onError: 'block' }).success).toBe(
