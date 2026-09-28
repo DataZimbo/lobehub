@@ -1,6 +1,6 @@
 # Submitted critical Stop retry repair — bounded D verification
 
-Latest integration update: C2 64b9424b (including C1 7a6dd20f) is present in D base 03282d19a248, together with S 76707138/K/L. Its two-file isolation supplement changes only tests; the recorded r4 execution and its SHA below are unchanged. See integration-progress.md for current owner-fixture, Cloud and independent-review gates.
+Latest integration update: C2 de4148cdc4 (including C1 7a6dd20f) is present in D base 8637eb393b08, together with S 76707138/K/L. Its two-file isolation supplement changes only tests; the recorded r4 execution and its SHA below are unchanged. The consolidated owner-fixture check now passes 1267 tests/lint; types remain 1444/1444 with identical diagnostics. See owner-regression-checkpoint.md for exact quality provenance and the remaining card, Cloud and independent-review gates.
 
 Temporary integration-base `cad39cb803a8dfd5830130fd58dc2c2038271609` includes C2 `8f4d8488c72455679ee78e52154de7e450cfae4b`, S/K/latest L, without conflicts. Docs merge `e90c22d0b633997aa5d5f8cdc4c3dbc21aa3ae85` was executed. The C1 7a6dd20f mock repair is still absent; final integration/served SHA and coordinator's final independent repair review remain pending. This supersedes the previous “fix not submitted” status, not the remaining review/Cloud gates.
 
