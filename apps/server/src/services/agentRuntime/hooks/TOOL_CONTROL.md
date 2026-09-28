@@ -60,6 +60,16 @@ replaced by already rewritten arguments. Email enrichment follows the inherited
 trusted-identity policy and one-second limit. Missing or failed enrichment omits
 email; an aborted wait returns `cancelled` and sends no control HTTP request.
 
+Notification callers may supply server-only `HookDeliveryContext { ownerUserId }`
+per delivery: the fifth argument of `dispatch` or the fourth argument of
+`dispatchBeforeToolCall`. The private `dispatchHooks` keeps `stopAfterHandler` in
+position five and receives delivery context in position six. No context is stored
+on the dispatcher, serialized with hooks or added to the payload. The shared
+builder authorizes the final user ID before reading its email cache and never
+queries an operation owner. L owns supplying trusted owner context at producers,
+including cold workers. Control preparation keeps its fourth `AbortSignal` and
+uses `{ signal }` without owner context because its final ID is the event user.
+
 ## Approval recovery
 
 Both legacy in-place `human_approved_tool` and new continuation workers load the
