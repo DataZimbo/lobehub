@@ -2,7 +2,7 @@
 
 本稿描述已约定的集成协议，不是发布文档。D 当前起点是 F `66af6210`，其中控制模式在注册和恢复时仍会明确拒绝。C1/C2 及通知生产者改动集成并验证后，才可发布到 `docs/development/basic/agent-runtime-hooks.zh-CN.mdx`。
 
-C1 接口检查点：协调提供的 `f055aa20931d864d500779ea77e6b14800055f29` 实现 allow/deny，但包含 `updatedInput` 或 `additionalContext` 的响应整体视为 unsupported，按 `onError` 处理，不部分应用决定。D 仅检查该接口，未集成。下文 rewrite/context 及完整审批行为仍等待 C2 和最终集成基线；参见 `c1-interface.md`。
+C1 接口检查点：协调提供的 `28ee1ad2a0c94dd9dd7afc4b66e5dc62947d1082` 实现 allow/deny，但包含 `updatedInput` 或 `additionalContext` 的响应整体视为 unsupported，按 `onError` 处理，不部分应用决定。D 仅检查该接口，未集成。下文 rewrite/context 及完整审批行为仍等待 C2 和最终集成基线；参见 `c1-interface.md`。
 
 ## 从服务端代码注册
 

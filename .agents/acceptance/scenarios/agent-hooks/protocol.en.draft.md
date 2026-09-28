@@ -2,7 +2,7 @@
 
 This draft describes the agreed integrated contract. It is not release documentation. D currently starts at F `66af6210`, where registration/restoration deliberately rejects control mode. C1/C2 and notification producer changes must be integrated and verified before publishing this page at `docs/development/basic/agent-runtime-hooks.mdx`.
 
-C1 interface checkpoint: coordinator-supplied `f055aa20931d864d500779ea77e6b14800055f29` implements allow/deny, but treats any response containing `updatedInput` or `additionalContext` as wholly unsupported (`onError` applies, with no partial decision). D has inspected this contract without integrating it. The rewrite/context and complete approval behavior below still requires C2 and the final integrated base. See `c1-interface.md`.
+C1 interface checkpoint: coordinator-supplied `28ee1ad2a0c94dd9dd7afc4b66e5dc62947d1082` implements allow/deny, but treats any response containing `updatedInput` or `additionalContext` as wholly unsupported (`onError` applies, with no partial decision). D has inspected this contract without integrating it. The rewrite/context and complete approval behavior below still requires C2 and the final integrated base. See `c1-interface.md`.
 
 ## Register hooks in server code
 
