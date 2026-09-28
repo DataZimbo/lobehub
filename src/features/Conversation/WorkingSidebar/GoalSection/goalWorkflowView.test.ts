@@ -4,38 +4,17 @@ import type { GoalStep } from '@/features/Conversation/Messages/GoalTaskCard/goa
 
 import {
   buildWorkflowRows,
-  goalPhaseToStageIndex,
   MAX_VISIBLE_WORKFLOW_ROWS,
   mergeTopicGoals,
   sliceVisibleWorkflowRows,
   summarizeWorkflow,
+  toSegmentStatuses,
 } from './goalWorkflowView';
 
 const step = (id: string, status: string, title = id) => ({
   id,
   status: status as GoalStep['status'],
   title,
-});
-
-describe('goalPhaseToStageIndex', () => {
-  it.each([
-    ['running', 1],
-    ['waiting', 1],
-    ['repairing', 1],
-    ['paused', 1],
-    ['error', 1],
-    ['verifying', 2],
-    ['review', 3],
-    ['achieved', 4],
-  ] as const)('lights stage %s for phase %s', (phase, index) => {
-    expect(goalPhaseToStageIndex(phase)).toBe(index);
-  });
-
-  it('keeps a planning goal on the Plan stage even though its phase reads running', () => {
-    expect(goalPhaseToStageIndex('running', 'planning')).toBe(0);
-    expect(goalPhaseToStageIndex('waiting', 'planning')).toBe(0);
-    expect(goalPhaseToStageIndex('running', 'running')).toBe(1);
-  });
 });
 
 describe('mergeTopicGoals', () => {
@@ -77,6 +56,19 @@ describe('buildWorkflowRows', () => {
     expect(rows.map((row) => row.state)).toEqual(['done', 'running', 'waiting', 'pending', 'done']);
     expect(rows[1].assigneeId).toBe('agt-2');
     expect(rows[0].assigneeId).toBeUndefined();
+  });
+});
+
+describe('toSegmentStatuses', () => {
+  it('maps row states to graph node statuses for the step track', () => {
+    const rows = buildWorkflowRows([
+      step('a', 'resolved'),
+      step('b', 'active'),
+      step('c', 'waiting'),
+      step('d', 'proposed'),
+    ]);
+
+    expect(toSegmentStatuses(rows)).toEqual(['resolved', 'active', 'waiting', 'proposed']);
   });
 });
 

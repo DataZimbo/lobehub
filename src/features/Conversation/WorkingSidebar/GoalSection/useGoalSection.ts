@@ -17,7 +17,6 @@ import { isGoalRequestGenerating } from '../../ChatInput/LinkedGoalTray/linkedGo
 import { useAgentContext } from '../../useAgentContext';
 import {
   buildWorkflowRows,
-  goalPhaseToStageIndex,
   type GoalWorkflowRow,
   type GoalWorkflowSummary,
   mergeTopicGoals,
@@ -60,7 +59,6 @@ export interface GoalWorkflowView {
   /** Re-request the graph after a failure. */
   retry?: () => void;
   rows: GoalWorkflowRow[];
-  stageIndex: number;
   startedAt?: Date | null;
   summary: GoalWorkflowSummary;
   title?: string;
@@ -68,9 +66,9 @@ export interface GoalWorkflowView {
 
 /**
  * One goal's live workflow view for the sidebar card: the graph snapshot →
- * lifecycle phase, stage rail index, ordered task rows (with their assignees)
- * and open decision gates. The card only holds the goal id, so everything is
- * fetched here, polling while the coordinator advances the graph.
+ * lifecycle phase, ordered task rows (with their assignees) and open decision
+ * gates. The card only holds the goal id, so everything is fetched here,
+ * polling while the coordinator advances the graph.
  */
 export const useGoalWorkflow = (goal: OperationGoal): GoalWorkflowView => {
   const useFetchGoalGraph = useGoalStore((s) => s.useFetchGoalGraph);
@@ -105,7 +103,6 @@ export const useGoalWorkflow = (goal: OperationGoal): GoalWorkflowView => {
     phase: progress.phase,
     retry: () => void mutate(),
     rows,
-    stageIndex: goalPhaseToStageIndex(progress.phase, snapshot?.goal.status),
     startedAt: snapshot?.goal.startedAt,
     summary: summarizeWorkflow(rows),
     title: snapshot?.goal.title ?? goal.name,

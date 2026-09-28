@@ -1,44 +1,7 @@
-import type { GoalStatus } from '@lobechat/const/goal';
+import type { GoalNodeStatus } from '@lobechat/types';
 
 import type { OperationGoal } from '@/features/Conversation/Messages/GoalTaskCard/deriveOperationGoals';
-import type {
-  GoalStep,
-  GoalTaskPhase,
-} from '@/features/Conversation/Messages/GoalTaskCard/goalTaskProgress';
-
-export const GOAL_WORKFLOW_STAGE_KEYS = [
-  'workingPanel.goal.stage.planning',
-  'workingPanel.goal.stage.running',
-  'workingPanel.goal.stage.verifying',
-  'workingPanel.goal.stage.review',
-  'workingPanel.goal.stage.achieved',
-] as const;
-
-/**
- * Which rail stage a lifecycle phase lights up. A goal still `planning` sits on
- * the Plan stage whatever its phase says (the phase folds planning into
- * running). Sub-states that still mean "work is happening" (waiting on a
- * person, repairing, paused) stay on the running stage — the phase pill next to
- * the header carries the nuance.
- */
-export const goalPhaseToStageIndex = (phase: GoalTaskPhase, status?: GoalStatus): number => {
-  if (status === 'planning') return 0;
-
-  switch (phase) {
-    case 'verifying': {
-      return 2;
-    }
-    case 'review': {
-      return 3;
-    }
-    case 'achieved': {
-      return 4;
-    }
-    default: {
-      return 1;
-    }
-  }
-};
+import type { GoalStep } from '@/features/Conversation/Messages/GoalTaskCard/goalTaskProgress';
 
 export type GoalWorkflowRowState = 'done' | 'running' | 'waiting' | 'pending';
 
@@ -68,6 +31,19 @@ export const buildWorkflowRows = (
           : 'pending',
     title: node.title,
   }));
+
+/** Row states as graph node statuses, so the step track can reuse the
+ * message card's segmentation (cap + conservative slicing) unchanged. */
+export const toSegmentStatuses = (rows: GoalWorkflowRow[]): GoalNodeStatus[] =>
+  rows.map((row) =>
+    row.state === 'done'
+      ? 'resolved'
+      : row.state === 'running'
+        ? 'active'
+        : row.state === 'waiting'
+          ? 'waiting'
+          : 'proposed',
+  );
 
 export interface GoalWorkflowSummary {
   done: number;

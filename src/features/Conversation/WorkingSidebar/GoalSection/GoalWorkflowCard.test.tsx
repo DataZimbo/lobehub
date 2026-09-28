@@ -29,7 +29,6 @@ const baseView: GoalWorkflowView = {
     { id: 't4', state: 'pending', title: '整理场景分类' },
     { id: 't5', state: 'pending', title: '编写复现报告' },
   ],
-  stageIndex: 1,
   startedAt: null,
   summary: { done: 1, running: 2, total: 5 },
   title: '凭证委托场景全景',
@@ -40,25 +39,26 @@ describe('GoalWorkflowCard', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the stage rail and the first batch of parallel rows', () => {
+  it('renders the actual-flow step track and the first batch of parallel rows', () => {
     render(<GoalWorkflowCard goal={baseView} />);
 
-    // key-passthrough i18n mock: component tests assert locale keys, not copy
-    for (const key of [
-      'workingPanel.goal.stage.planning',
-      'workingPanel.goal.stage.running',
-      'workingPanel.goal.stage.verifying',
-      'workingPanel.goal.stage.review',
-      'workingPanel.goal.stage.achieved',
-    ]) {
-      expect(screen.getByText(key)).toBeInTheDocument();
-    }
+    // one segment per task, same encoding as the message card
+    expect(screen.getByTestId('goal-workflow-step-track')).toBeInTheDocument();
     expect(screen.getByText('盘点凭证委托场景')).toBeInTheDocument();
     expect(screen.getByText('设计代理输入交互')).toBeInTheDocument();
     // collapsed to the visible cap: the 5th task hides behind "more"
     expect(screen.queryByText('编写复现报告')).not.toBeInTheDocument();
     expect(screen.getByText('workingPanel.goal.more')).toBeInTheDocument();
     expect(screen.getByTestId('assignee-agt-2')).toBeInTheDocument();
+    // footer leads to details, not a bare fraction
+    expect(screen.getByText('workingPanel.goal.viewDetails')).toBeInTheDocument();
+  });
+
+  it('honors initialCollapsed for older goals in multi-goal topics', () => {
+    render(<GoalWorkflowCard initialCollapsed goal={baseView} />);
+
+    expect(screen.getByText('盘点凭证委托场景')).not.toBeVisible();
+    expect(screen.getByText('凭证委托场景全景')).toBeInTheDocument();
   });
 
   it('expands the hidden rows from "more" and collapses them again', async () => {

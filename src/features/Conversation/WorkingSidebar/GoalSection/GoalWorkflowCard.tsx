@@ -18,13 +18,14 @@ import { useTranslation } from 'react-i18next';
 
 import AsyncError from '@/components/AsyncError';
 import AssigneeProfileAvatar from '@/features/AgentGoals/ProcessControl/AssigneeProfileAvatar';
+import { buildGoalStepSegments } from '@/features/Conversation/Messages/GoalTaskCard/goalTaskProgress';
 import { useChatStore } from '@/store/chat';
 
 import {
-  GOAL_WORKFLOW_STAGE_KEYS,
   type GoalWorkflowRow,
   MAX_VISIBLE_WORKFLOW_ROWS,
   sliceVisibleWorkflowRows,
+  toSegmentStatuses,
 } from './goalWorkflowView';
 import { type GoalWorkflowView, useGoalWorkflow } from './useGoalSection';
 
@@ -151,6 +152,40 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     padding-block: 4px 8px;
     padding-inline: 10px;
   `,
+  segActive: css`
+    background: ${cssVar.colorInfo};
+    animation: sidebar-goal-step-pulse 1.6s ${cssVar.motionEaseInOut} infinite;
+  `,
+  segDone: css`
+    background: ${cssVar.colorSuccess};
+  `,
+  segPending: css`
+    background: ${cssVar.colorFillSecondary};
+  `,
+  segment: css`
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+  `,
+  stepTrack: css`
+    display: flex;
+    gap: 3px;
+
+    height: 4px;
+    margin-block: 2px 8px;
+    margin-inline: 10px;
+
+    @keyframes sidebar-goal-step-pulse {
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.45;
+      }
+    }
+  `,
   sectionTitle: css`
     overflow: hidden;
     flex: 1;
@@ -162,42 +197,6 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     color: ${cssVar.colorText};
     text-overflow: ellipsis;
     white-space: nowrap;
-  `,
-  stageDot: css`
-    flex-shrink: 0;
-
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-
-    background: ${cssVar.colorFillSecondary};
-  `,
-  stageDotCurrent: css`
-    background: ${cssVar.colorWarning};
-    box-shadow: 0 0 0 3px ${cssVar.colorWarningBg};
-  `,
-  stageDotDone: css`
-    background: ${cssVar.colorSuccess};
-  `,
-  stageLabel: css`
-    font-size: 11px;
-    color: ${cssVar.colorTextTertiary};
-  `,
-  stageLabelActive: css`
-    color: ${cssVar.colorText};
-  `,
-  stageLine: css`
-    flex: 1;
-    height: 1px;
-    margin-inline: 4px;
-    background: ${cssVar.colorBorderSecondary};
-  `,
-  stageLineDone: css`
-    background: ${cssVar.colorSuccess};
-  `,
-  stageRail: css`
-    padding-block: 2px 8px;
-    padding-inline: 10px;
   `,
 }));
 
@@ -258,16 +257,42 @@ const WorkflowRow = memo<{ onOpen: () => void; row: GoalWorkflowRow }>(({ row, o
 
 WorkflowRow.displayName = 'GoalWorkflowRow';
 
+const SEGMENT_CLASS = {
+  active: styles.segActive,
+  done: styles.segDone,
+  pending: styles.segPending,
+} as const;
+
+/** The goal's actual flow — one segment per Task, same encoding as the message card. */
+const StepTrack = memo<{ rows: GoalWorkflowRow[] }>(({ rows }) => {
+  const segments = buildGoalStepSegments(toSegmentStatuses(rows));
+  if (segments.length === 0) return null;
+
+  return (
+    <div aria-hidden className={styles.stepTrack} data-testid={'goal-workflow-step-track'}>
+      {segments.map((state, index) => (
+        <div className={cx(styles.segment, SEGMENT_CLASS[state])} key={index} />
+      ))}
+    </div>
+  );
+});
+
+StepTrack.displayName = 'GoalWorkflowStepTrack';
+
 /**
- * One conversation goal as a workflow card: a stage rail across the goal's
- * lifecycle, then its Tasks as parallel rows with their assignees. The same
- * pointer the message-area card derives, read at topic scope — the sidebar is
- * where parallel state gets room to breathe.
+ * One conversation goal as a workflow card: the goal's own Tasks as a step
+ * track and parallel rows with their assignees. The same pointer the
+ * message-area card derives, read at topic scope — the sidebar is where
+ * parallel state gets room to breathe.
  */
-const GoalWorkflowCard = memo<{ goal: GoalWorkflowView }>(({ goal }) => {
+const GoalWorkflowCard = memo<{
+  goal: GoalWorkflowView;
+  /** Multi-goal topics keep only the newest card open by default. */
+  initialCollapsed?: boolean;
+}>(({ goal, initialCollapsed = false }) => {
   const { t } = useTranslation('chat');
   const openGoalPortal = useChatStore((s) => s.openGoal);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [rowsExpanded, setRowsExpanded] = useState(false);
   const bodyId = useId();
 
@@ -339,41 +364,7 @@ const GoalWorkflowCard = memo<{ goal: GoalWorkflowView }>(({ goal }) => {
           </Flexbox>
         ) : (
           <>
-            <Flexbox horizontal align={'center'} className={styles.stageRail}>
-              {GOAL_WORKFLOW_STAGE_KEYS.map((key, index) => {
-                const state =
-                  index < goal.stageIndex ? 'done' : index === goal.stageIndex ? 'current' : 'todo';
-                return (
-                  <Flexbox horizontal align={'center'} key={key} style={{ flex: 1, minWidth: 0 }}>
-                    <Flexbox horizontal align={'center'} gap={5}>
-                      <div
-                        className={cx(
-                          styles.stageDot,
-                          state === 'done' && styles.stageDotDone,
-                          state === 'current' && styles.stageDotCurrent,
-                        )}
-                      />
-                      <span
-                        className={cx(
-                          styles.stageLabel,
-                          state !== 'todo' && styles.stageLabelActive,
-                        )}
-                      >
-                        {t(key)}
-                      </span>
-                    </Flexbox>
-                    {index < GOAL_WORKFLOW_STAGE_KEYS.length - 1 && (
-                      <div
-                        className={cx(
-                          styles.stageLine,
-                          index < goal.stageIndex && styles.stageLineDone,
-                        )}
-                      />
-                    )}
-                  </Flexbox>
-                );
-              })}
-            </Flexbox>
+            <StepTrack rows={goal.rows} />
 
             {goal.pendingDecisions > 0 && (
               <Flexbox
@@ -450,11 +441,8 @@ const GoalWorkflowCard = memo<{ goal: GoalWorkflowView }>(({ goal }) => {
               <div className={styles.progress}>
                 <div className={styles.progressFill} style={{ width: `${percent}%` }} />
               </div>
-              <span className={styles.count}>
-                {goal.summary.done}/{goal.summary.total}
-              </span>
               <Button outdent={'end'} size={'small'} type={'text'} onClick={open}>
-                {t('workingPanel.goal.openPortal')}
+                {t('workingPanel.goal.viewDetails')}
               </Button>
             </Flexbox>
           </>
@@ -466,12 +454,15 @@ const GoalWorkflowCard = memo<{ goal: GoalWorkflowView }>(({ goal }) => {
 
 GoalWorkflowCard.displayName = 'GoalWorkflowCard';
 
-const GoalWorkflowCardContainer = memo<{ criteriaCount: number; goalId: string; name: string }>(
-  ({ criteriaCount, goalId, name }) => {
-    const view = useGoalWorkflow({ criteriaCount, goalId, name });
-    return <GoalWorkflowCard goal={view} />;
-  },
-);
+const GoalWorkflowCardContainer = memo<{
+  criteriaCount: number;
+  goalId: string;
+  initialCollapsed?: boolean;
+  name: string;
+}>(({ criteriaCount, goalId, initialCollapsed, name }) => {
+  const view = useGoalWorkflow({ criteriaCount, goalId, name });
+  return <GoalWorkflowCard goal={view} initialCollapsed={initialCollapsed} />;
+});
 
 GoalWorkflowCardContainer.displayName = 'GoalWorkflowCardContainer';
 
