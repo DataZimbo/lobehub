@@ -10,6 +10,10 @@ import {
   deriveAgentInterventionContinuationOperationId,
   deriveAgentInterventionQueueDeduplicationId,
 } from '@/business/server/agent-run/agentInterventionIdentity';
+import {
+  AgentInterventionModel,
+  hashAgentInterventionRequestRevision,
+} from '@/database/models/agentIntervention';
 import { AgentOperationModel } from '@/database/models/agentOperation';
 import { MessageModel } from '@/database/models/message';
 import { ThreadModel } from '@/database/models/thread';
@@ -815,7 +819,6 @@ describe('aiAgentRouter — remote Human-in-the-loop', () => {
       aiAgentService.stopPendingApproval.mockImplementation((input) =>
         controller.stopPendingApproval(input),
       );
-      let published = false;
       const finalStatus = entry === 'custom' ? 'cancelled' : 'stopped';
       customIntervention.mockResolvedValue({ content: 'cancelled' });
       const claimed = {
@@ -852,15 +855,90 @@ describe('aiAgentRouter — remote Human-in-the-loop', () => {
                 terminalStatus: 'stopped' as const,
               },
       };
-      // Cloud owns claims/publication. Its boundary returns the same resolving
-      // request until publication, then already_resolved (as in D's real route).
-      const resolve = async () =>
-        published ? { handled: true, state: 'already_resolved', status: finalStatus } : claimed;
+      // The private Cloud ACL/DTO adapter is a boundary fixture, but its durable
+      // claim, publication and completion transitions use the real OSS DB model.
+      const reviewModel = new AgentInterventionModel(serverDB, userId);
+      const [review] = await reviewModel.createBatch({
+        activityKey: operationId,
+        batchId,
+        deadline: new Date(Date.now() + 600_000),
+        items: [
+          {
+            allowedActions: entry === 'custom' ? ['cancel_interaction'] : ['stop'],
+            interactionKind: entry === 'custom' ? 'custom' : 'tool_approval',
+            requestRevisionHash: hashAgentInterventionRequestRevision('{"path":"/tmp/a"}'),
+            reviewTokenHash: hashAgentInterventionRequestRevision(operationId),
+            reviewContext: { title: 'Stop route regression' },
+            sanitizedRequest: { identifier: 'lobe-local-system', apiName: 'editFile' },
+            surface: entry === 'custom' ? 'form' : 'binary',
+            toolCallId: 'native-stop',
+            toolMessageId: messageId,
+          },
+        ],
+        operationId,
+        source: 'runtime',
+        stepIndex: 0,
+        systemActionEligibility: 'review_only',
+      });
+      const claimInput = {
+        action:
+          entry === 'custom'
+            ? { type: 'cancel_interaction' as const }
+            : { haltScope: 'operation' as const, type: 'stop' as const },
+        actorId: userId,
+        batchId,
+        operationId,
+        resolutionRequestId,
+        scope: 'all' as const,
+        selectedInterventionIds: [review.id],
+        expectedItemCount: 1,
+        expectedRequestRevisionHashes: { [review.id]: review.requestRevisionHash },
+        expectedVersions: { [review.id]: review.version },
+      };
+      const resolve = async () => {
+        const result = await reviewModel.claimBatch(claimInput);
+        if (result.outcome !== 'applied' && result.outcome !== 'idempotent')
+          throw new Error('Review claim failed');
+        return result.resolution.status === 'completed'
+          ? { handled: true, state: 'already_resolved', status: finalStatus }
+          : { ...claimed, claimId: result.resolution.id };
+      };
       businessV2.resolveAgentInterventionBySource.mockImplementation(resolve);
       businessV2.resolveAgentIntervention.mockImplementation(resolve);
+      businessV2.rollbackAgentInterventionResolution.mockImplementation(async () =>
+        reviewModel.rollbackResolution(resolutionRequestId),
+      );
       businessV2.onAgentInterventionResolutionPublished.mockImplementation(async () => {
-        published = true;
+        expect((await reviewModel.markResolutionPublished(resolutionRequestId)).outcome).toMatch(
+          /applied|idempotent/,
+        );
+        expect((await reviewModel.completeRuntimeResolution(resolutionRequestId)).outcome).toMatch(
+          /applied|idempotent/,
+        );
       });
+      const expectResolvingClaim = async () => {
+        expect(await reviewModel.findResolutionByRequestId(resolutionRequestId)).toMatchObject({
+          status: 'resolving',
+          actorId: userId,
+        });
+        expect((await reviewModel.findBatch(operationId, batchId)).interventions).toEqual([
+          expect.objectContaining({
+            id: review.id,
+            status: 'resolving',
+            publishedAt: null,
+            resolvedAt: null,
+          }),
+        ]);
+        // Failure never reopens the reviewed token/snapshot for another request.
+        expect(
+          (
+            await reviewModel.claimBatch({
+              ...claimInput,
+              resolutionRequestId: '018fbd8e-7baf-7c6d-8000-000000000031',
+            })
+          ).outcome,
+        ).toBe('conflict');
+      };
       const invoke = () =>
         entry !== 'review'
           ? userCaller().resolveAgentInterventionBySource({
@@ -885,7 +963,7 @@ describe('aiAgentRouter — remote Human-in-the-loop', () => {
         for (let attempt = 1; attempt <= 2; attempt++) {
           await expect(invoke()).rejects.toThrow('Critical webhook delivery failed');
           expect(hookFetch).toHaveBeenCalledTimes(attempt);
-          expect(published).toBe(false);
+          await expectResolvingClaim();
           expect(await operationModel.findById(operationId)).toMatchObject({
             status: 'interrupted',
             metadata: { pendingStopHookBatchId: batchId },
@@ -913,9 +991,23 @@ describe('aiAgentRouter — remote Human-in-the-loop', () => {
         const consume = vi.spyOn(operationModel, 'completeStopHookNotification');
         consume.mockResolvedValueOnce(false);
         await expect(invoke()).rejects.toThrow('completion was not persisted');
-        expect(published).toBe(false);
+        await expectResolvingClaim();
         expect(businessV2.onAgentInterventionResolutionPublished).not.toHaveBeenCalled();
         consume.mockRestore();
+        // If publishing commits but completion fails, the durable row remains
+        // published. Retry repairs only completion, not the consumed notification.
+        businessV2.onAgentInterventionResolutionPublished.mockImplementationOnce(async () => {
+          await reviewModel.markResolutionPublished(resolutionRequestId);
+          throw new Error('Review completion unavailable');
+        });
+        await expect(invoke()).rejects.toThrow('Review completion unavailable');
+        expect(await reviewModel.findResolutionByRequestId(resolutionRequestId)).toMatchObject({
+          status: 'published',
+        });
+        expect(
+          (await operationModel.findById(operationId))?.metadata?.pendingStopHookBatchId,
+        ).toBeUndefined();
+        expect(hookFetch).toHaveBeenCalledTimes(4);
       }
       await expect(invoke()).resolves.toMatchObject({ success: true, status: finalStatus });
       const deliveries = hookFetch.mock.calls.length;
@@ -923,10 +1015,19 @@ describe('aiAgentRouter — remote Human-in-the-loop', () => {
       expect(
         (await operationModel.findById(operationId))?.metadata?.pendingStopHookBatchId,
       ).toBeUndefined();
-      // Both completed Cloud resolution and a lost publication response must not
-      // deliver a successful stop again.
+      expect(await reviewModel.findResolutionByRequestId(resolutionRequestId)).toMatchObject({
+        status: 'completed',
+      });
+      expect((await reviewModel.findBatch(operationId, batchId)).interventions).toEqual([
+        expect.objectContaining({
+          id: review.id,
+          status: 'cancelled',
+          publishedAt: expect.any(Date),
+          resolvedAt: expect.any(Date),
+        }),
+      ]);
+      // Completed durable resolution takes the real already_resolved branch.
       await expect(invoke()).resolves.toMatchObject({ success: true });
-      published = false;
       await expect(invoke()).resolves.toMatchObject({ success: true });
       expect(hookFetch).toHaveBeenCalledTimes(deliveries);
       expect(runtime.interruptOperation).toHaveBeenCalledTimes(1);
