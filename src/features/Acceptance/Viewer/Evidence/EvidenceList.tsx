@@ -130,14 +130,13 @@ export const EvidenceList = memo<{
         const caption = description && <span className={styles.caption}>{description}</span>;
         if (item.fileUrl && item.type === 'video')
           return (
-            <Flexbox gap={4} key={item.id} width={'100%'}>
-              <VideoEvidencePlayer
-                chapters={readEvidenceChapters(item.metadata)}
-                notes={reviewNotes?.filter((note) => note.evidenceId === item.id)}
-                src={item.fileUrl}
-              />
-              {caption}
-            </Flexbox>
+            <VideoEvidencePlayer
+              caption={caption}
+              chapters={readEvidenceChapters(item.metadata)}
+              key={item.id}
+              notes={reviewNotes?.filter((note) => note.evidenceId === item.id)}
+              src={item.fileUrl}
+            />
           );
         if (item.fileUrl && item.type === 'audio')
           return (

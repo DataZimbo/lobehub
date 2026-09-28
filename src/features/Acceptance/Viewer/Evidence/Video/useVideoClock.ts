@@ -42,6 +42,14 @@ export const useVideoClock = (
   const [status, setStatus] = useState<'error' | 'loading' | 'ready'>('loading');
   const loopRef = useRef(loop);
   loopRef.current = loop;
+  /**
+   * The time of the frame actually on screen. `currentTime` runs ahead of it:
+   * pausing lands a frame or so past what was painted, and a region drawn on
+   * the picture belongs to the picture, not to the media clock. Cleared by
+   * every deliberate seek, so the (asynchronous) pause event never drags a
+   * seek back to the frame that was showing before it.
+   */
+  const paintedRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -55,10 +63,11 @@ export const useVideoClock = (
         ? video.requestVideoFrameCallback(tick)
         : requestAnimationFrame(tick);
     };
-    const tick = () => {
+    const tick = (_now?: number, frame?: { mediaTime: number }) => {
       const span = loopRef.current;
       if (span && !video.paused && video.currentTime >= span.end) video.currentTime = span.start;
-      setTime(video.currentTime);
+      paintedRef.current = frame?.mediaTime;
+      setTime(paintedRef.current ?? video.currentTime);
       schedule();
     };
     const onMeta = () => {
@@ -67,8 +76,18 @@ export const useVideoClock = (
       setStatus('ready');
     };
     const onPlay = () => setPaused(false);
-    const onPause = () => setPaused(true);
-    const onSeeked = () => setTime(video.currentTime);
+    const onPause = () => {
+      setPaused(true);
+      // Hold the clock on the painted frame, so the readout, a region drawn
+      // now and a later seek back all name the frame the reviewer is looking at.
+      const painted = paintedRef.current;
+      if (painted !== undefined && Math.abs(video.currentTime - painted) > 1e-3)
+        video.currentTime = painted;
+    };
+    const onSeeked = () => {
+      paintedRef.current = undefined;
+      setTime(video.currentTime);
+    };
     const onRate = () => setRateState(video.playbackRate);
     const onError = () => setStatus('error');
 
@@ -95,6 +114,8 @@ export const useVideoClock = (
 
   const controls = useMemo(
     () => ({
+      /** The time of the frame on screen — what a note made right now is about. */
+      frameTime: () => paintedRef.current ?? videoRef.current?.currentTime ?? 0,
       pause: () => videoRef.current?.pause(),
       reload: () => {
         setStatus('loading');
@@ -103,6 +124,7 @@ export const useVideoClock = (
       seek: (seconds: number) => {
         const video = videoRef.current;
         if (!video) return;
+        paintedRef.current = undefined;
         video.currentTime = Math.min(Math.max(seconds, 0), video.duration || 0);
         setTime(video.currentTime);
       },
@@ -117,8 +139,10 @@ export const useVideoClock = (
       step: (frames: number) => {
         const video = videoRef.current;
         if (!video) return;
+        const from = paintedRef.current ?? video.currentTime;
+        paintedRef.current = undefined;
         video.pause();
-        video.currentTime = steppedTime(video.currentTime, frames, video.duration || 0);
+        video.currentTime = steppedTime(from, frames, video.duration || 0);
       },
       toggle: () => {
         const video = videoRef.current;

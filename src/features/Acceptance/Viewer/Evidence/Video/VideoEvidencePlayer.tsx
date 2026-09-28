@@ -5,6 +5,7 @@ import type { AcceptanceReviewAnnotation, VerifyEvidenceChapter } from '@lobecha
 import { Center, Flexbox, Icon } from '@lobehub/ui';
 import { Button } from '@lobehub/ui/base-ui';
 import { AlertTriangle, Download, Play, RefreshCw } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { memo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,6 +20,8 @@ import { VideoTimeline } from './VideoTimeline';
 const MAX_HEIGHT = 360;
 
 interface VideoEvidencePlayerProps {
+  /** The evidence description — laid out under the player, at the player's width. */
+  caption?: ReactNode;
   chapters?: VerifyEvidenceChapter[];
   /** Reviewer notes already made on this video, pinned to the timeline. */
   notes?: AcceptanceReviewAnnotation[];
@@ -32,7 +35,7 @@ interface VideoEvidencePlayerProps {
  * Space never hijacks the page scroll.
  */
 export const VideoEvidencePlayer = memo<VideoEvidencePlayerProps>(
-  ({ chapters = [], notes = [], src }) => {
+  ({ caption, chapters = [], notes = [], src }) => {
     const { t } = useTranslation('verify');
     const rootRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -132,6 +135,7 @@ export const VideoEvidencePlayer = memo<VideoEvidencePlayerProps>(
             />
           </div>
         </div>
+        {caption}
         <VideoClaimList
           chapters={chapters}
           onSeek={(seconds) => {

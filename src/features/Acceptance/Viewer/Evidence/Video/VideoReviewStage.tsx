@@ -136,10 +136,9 @@ export const VideoReviewStage = memo<VideoReviewStageProps>(
     useImperativeHandle(handleRef, () => ({ focusNote }));
 
     const markFrame = () => {
-      const video = videoRef.current;
-      if (!video) return;
-      video.pause();
-      onAddNote({ time: { start: video.currentTime } });
+      const start = controls.frameTime();
+      controls.pause();
+      onAddNote({ time: { start } });
     };
 
     const commentRange = () => {
@@ -165,7 +164,11 @@ export const VideoReviewStage = memo<VideoReviewStageProps>(
             break;
           }
           case 'i': {
-            setRange((current) => ({ end: Math.max(current?.end ?? 0, now + 1), start: now }));
+            // Open-ended until O: a provisional end would loop playback short
+            // of the moment the reviewer is waiting for.
+            const end =
+              state.range && state.range.end > now ? state.range.end : state.clock.duration;
+            setRange({ end, start: now });
             showFlash(t('acceptance.video.inPoint', { time: formatVideoTime(now) }));
             break;
           }
@@ -204,6 +207,8 @@ export const VideoReviewStage = memo<VideoReviewStageProps>(
         y: (event.clientY - box.top) / box.height,
       };
       const wasPlaying = !paused;
+      // The frame on screen at the press is the one being circled.
+      const start = controls.frameTime();
       controls.pause();
       element.setPointerCapture(event.pointerId);
       let current: Rect | null = null;
@@ -225,7 +230,7 @@ export const VideoReviewStage = memo<VideoReviewStageProps>(
         setDraft(null);
         const rect = current as Rect | null;
         if (rect && rect.width > 0.02 && rect.height > 0.02) {
-          onAddNote({ rect, time: { start: videoRef.current?.currentTime ?? 0 } });
+          onAddNote({ rect, time: { start } });
         } else if (!wasPlaying) {
           controls.toggle();
         }
@@ -317,8 +322,9 @@ export const VideoReviewStage = memo<VideoReviewStageProps>(
             </div>
           </div>
         </div>
-        <div className={styles.player} style={{ flex: 'none' }}>
-          <div className={styles.bar}>
+        {/* Not clipped like the frame: the hover preview rises above the bar. */}
+        <div className={styles.player} style={{ flex: 'none', overflow: 'visible' }}>
+          <div className={styles.bar} style={{ borderRadius: 'inherit' }}>
             <VideoTimeline
               activeNoteKey={activeNoteKey}
               chapters={chapters}

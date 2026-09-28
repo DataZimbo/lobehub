@@ -38,6 +38,8 @@ export default {
   'acceptance.video.notePlaceholderDispute': 'What is wrong with this claim?',
   'acceptance.video.notePlaceholderFrame': 'What is wrong on this frame?',
   'acceptance.video.notePlaceholderRange': 'What happens during this span?',
+  'acceptance.video.notesEmpty':
+    'After you circle, mark a frame or select a span on the video, your notes appear here.',
   'acceptance.video.outPoint': 'Out point {{time}}',
   'acceptance.video.pause': 'Pause',
   'acceptance.video.play': 'Play',

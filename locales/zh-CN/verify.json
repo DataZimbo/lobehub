@@ -358,6 +358,7 @@
   "acceptance.video.notePlaceholderDispute": "这条说法哪里不对？",
   "acceptance.video.notePlaceholderFrame": "这一帧哪里不对？",
   "acceptance.video.notePlaceholderRange": "这段时间里发生了什么？",
+  "acceptance.video.notesEmpty": "在左侧视频上框选、标注整帧或选一段区间后，评论会出现在这里。",
   "acceptance.video.outPoint": "出点 {{time}}",
   "acceptance.video.pause": "暂停",
   "acceptance.video.play": "播放",

@@ -227,7 +227,9 @@ export const DesktopEvidenceReview = memo<DesktopEvidenceReviewProps>(({ model }
                 </Flexbox>
                 {activeAnnotations.length === 0 && (
                   <Text fontSize={12} type={'secondary'}>
-                    {t('acceptance.review.regionCommentsEmpty')}
+                    {isVideo
+                      ? t('acceptance.video.notesEmpty')
+                      : t('acceptance.review.regionCommentsEmpty')}
                   </Text>
                 )}
                 {isVideo ? (
