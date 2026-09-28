@@ -139,6 +139,53 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('beforeToolCall control pipeline', () => {
   it.each([false, true])(
+    'uses the persisted share visitor for hook identity while executing as the owner, queue=%s',
+    async (queue) => {
+      queueMode.mockReturnValue(queue);
+      const fixture = setup(
+        [
+          control(),
+          {
+            id: 'after',
+            type: 'afterToolCall',
+            webhook: { url: 'https://hooks.example/after' },
+          },
+        ],
+        undefined,
+        queue,
+      );
+      fixture.state.origin!.userId = 'origin-owner';
+      fixture.state.principal = {
+        actor: {
+          shareVisitor: {
+            agentId: 'agent',
+            shareId: 'share-1',
+            visitorUserId: 'visitor-1',
+          },
+        },
+      };
+      // Restore the trusted state through its persistence wire format.
+      // eslint-disable-next-line unicorn/prefer-structured-clone
+      Object.assign(fixture.state, JSON.parse(JSON.stringify(fixture.state)));
+
+      await fixture.step([{ ...call(), arguments: '{"path":"a","userId":"untrusted-input"}' }]);
+
+      expect(fetchHook).toHaveBeenCalledTimes(2);
+      for (const [, request] of fetchHook.mock.calls) {
+        expect(JSON.parse(request.body)).toMatchObject({
+          userId: 'visitor-1',
+          args: { userId: 'untrusted-input' },
+        });
+      }
+      expect(fixture.execute).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ userId: 'user' }),
+      );
+      expect(fixture.state.origin?.userId).toBe('origin-owner');
+    },
+  );
+
+  it.each([false, true])(
     'denies before approval/mock/execution and persists attempts=0, queue=%s',
     async (queue) => {
       queueMode.mockReturnValue(queue);
