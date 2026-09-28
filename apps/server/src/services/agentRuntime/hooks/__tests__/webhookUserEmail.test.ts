@@ -7,12 +7,15 @@ import { HookDispatcher } from '../HookDispatcher';
 import type { AgentHookEvent, AgentHookType, SerializedHook } from '../types';
 import { createWebhookPayloadBuilder } from '../webhookPayload';
 
-const { getEmailsByIds, publishJSON } = vi.hoisted(() => ({
+const { getEmailsByIds, operationOwner, publishJSON } = vi.hoisted(() => ({
   getEmailsByIds: vi.fn(),
+  operationOwner: vi.fn(),
   publishJSON: vi.fn(),
 }));
 vi.mock('@/database/models/user', () => ({ UserModel: { getEmailsByIds } }));
-vi.mock('@/database/server', () => ({ getServerDB: async () => ({}) }));
+vi.mock('@/database/server', () => ({
+  getServerDB: async () => ({ query: { agentOperations: { findFirst: operationOwner } } }),
+}));
 vi.mock('@/server/services/queue/impls', () => ({ isQueueAgentRuntimeEnabled: () => true }));
 vi.mock('@upstash/qstash', () => ({
   Client: class {
@@ -61,6 +64,7 @@ afterAll(async () => {
 beforeEach(() => {
   dispatcher = new HookDispatcher();
   received.length = 0;
+  operationOwner.mockReset().mockResolvedValue(undefined);
   getEmailsByIds
     .mockReset()
     .mockImplementation(async (_db, ids: string[]) =>
@@ -103,7 +107,7 @@ describe('webhook user email', () => {
     ]);
     expect(event.userId).toBe('visitor');
     expect(getEmailsByIds).toHaveBeenCalledTimes(1);
-    expect(getEmailsByIds).toHaveBeenCalledWith({}, ['visitor']);
+    expect(getEmailsByIds).toHaveBeenCalledWith(expect.anything(), ['visitor']);
   });
 
   it.each([{ rows: [] }, { rows: [{ id: 'visitor', email: null }] }])(
@@ -280,6 +284,112 @@ describe('webhook user email', () => {
       { hookId: 'control', hookType: 'beforeToolCall' },
     );
     expect(payload).toMatchObject({ args, originalArgs, userEmail: 'visitor@example.test' });
+  });
+
+  it('pairs an internal callback owner with its email from the persisted operation', async () => {
+    operationOwner.mockResolvedValue({ userId: 'owner' });
+    await dispatcher.dispatch('run', 'onComplete', event, [
+      { id: 'external', type: 'onComplete', webhook: { url } },
+      { id: 'internal', type: 'onComplete', webhook: { url, body: { userId: 'owner' } } },
+    ]);
+    expect(received.map(({ userId, userEmail }) => ({ userId, userEmail }))).toEqual([
+      { userId: 'visitor', userEmail: 'visitor@example.test' },
+      { userId: 'owner', userEmail: 'owner@example.test' },
+    ]);
+    expect(event.userId).toBe('visitor');
+  });
+
+  it('uses the producer operation id even if the webhook body overrides it', async () => {
+    operationOwner.mockImplementation(async ({ where }) => {
+      const operationId = where({ id: 'id-column' }, { eq: (_column: string, id: string) => id });
+      return { userId: operationId === 'run' ? 'owner' : 'unrelated' };
+    });
+    await dispatcher.dispatch('run', 'onComplete', event, [
+      {
+        id: 'spoof',
+        type: 'onComplete',
+        webhook: { url, body: { operationId: 'other-run', userId: 'unrelated' } },
+      },
+    ]);
+    expect(received[0]).not.toHaveProperty('userEmail');
+    expect(operationOwner).toHaveBeenCalledTimes(1);
+    expect(getEmailsByIds).not.toHaveBeenCalled();
+  });
+
+  it('revalidates a persisted owner on a restored queue worker', async () => {
+    operationOwner.mockResolvedValue({ userId: 'owner' });
+    const hooks: SerializedHook[] = [
+      { id: 'internal', type: 'onComplete', webhook: { url, body: { userId: 'owner' } } },
+    ];
+    await dispatcher.dispatch('run', 'onComplete', event, hooks);
+    dispatcher = new HookDispatcher();
+    const serializedHooks = JSON.stringify(hooks);
+    await dispatcher.dispatch('run', 'onComplete', event, JSON.parse(serializedHooks));
+    expect(received[1]).toMatchObject({ userId: 'owner', userEmail: 'owner@example.test' });
+    expect(operationOwner).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps cached owners isolated across consecutive operations', async () => {
+    operationOwner
+      .mockResolvedValueOnce({ userId: 'owner-a' })
+      .mockResolvedValueOnce({ userId: 'owner-b' });
+    await dispatcher.dispatch('run', 'onComplete', event, [
+      { id: 'a', type: 'onComplete', webhook: { url, body: { userId: 'owner-a' } } },
+    ]);
+    await dispatcher.dispatch('run-b', 'onComplete', { ...event, operationId: 'run-b' }, [
+      { id: 'b', type: 'onComplete', webhook: { url, body: { userId: 'owner-b' } } },
+    ]);
+    expect(received.map(({ userEmail }) => userEmail)).toEqual([
+      'owner-a@example.test',
+      'owner-b@example.test',
+    ]);
+    expect(operationOwner).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([{ rows: [] }, { rows: [{ id: 'owner', email: null }] }])(
+    'omits unavailable owner email without substituting visitor email',
+    async ({ rows }) => {
+      operationOwner.mockResolvedValue({ userId: 'owner' });
+      getEmailsByIds.mockImplementation(async (_db, ids: string[]) =>
+        ids[0] === 'visitor' ? [{ id: 'visitor', email: 'visitor@example.test' }] : rows,
+      );
+      await send();
+      await dispatcher.dispatch('run', 'onComplete', event, [
+        { id: 'internal', type: 'onComplete', webhook: { url, body: { userId: 'owner' } } },
+      ]);
+      expect(received[1]).toHaveProperty('userId', 'owner');
+      expect(received[1]).not.toHaveProperty('userEmail');
+    },
+  );
+
+  it('omits email on owner lookup failure without querying the requested account', async () => {
+    operationOwner.mockRejectedValue(new Error('lookup unavailable'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await dispatcher.dispatch('run', 'onComplete', event, [
+      { id: 'internal', type: 'onComplete', webhook: { url, body: { userId: 'owner' } } },
+    ]);
+    expect(received[0]).not.toHaveProperty('userEmail');
+    expect(getEmailsByIds).not.toHaveBeenCalled();
+  });
+
+  it('does not query an owner email after its waiter has timed out', async () => {
+    vi.useFakeTimers();
+    let complete!: (value: { userId: string }) => void;
+    operationOwner.mockReturnValue(
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+    );
+    const pending = createWebhookPayloadBuilder()(
+      event,
+      { body: { userId: 'owner' } },
+      { hookId: 'internal', hookType: 'onComplete' },
+    );
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await pending).not.toHaveProperty('userEmail');
+    complete({ userId: 'owner' });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(getEmailsByIds).not.toHaveBeenCalled();
   });
 
   it('includes the resolved email in QStash JSON', async () => {

@@ -14,8 +14,24 @@ const readUserEmail = async (userId: string): Promise<string | undefined> => {
     ]);
     const users = await UserModel.getEmailsByIds(await getServerDB(), [userId]);
     return users.find((user) => user.id === userId)?.email ?? undefined;
-  } catch (error) {
-    console.error('[HookDispatcher] Failed to resolve webhook user email', error);
+  } catch {
+    console.error('[HookDispatcher] Failed to resolve webhook user email');
+    return undefined;
+  }
+};
+
+/** The producer operation id identifies the durable execution owner. */
+const readOperationOwner = async (operationId: string): Promise<string | undefined> => {
+  try {
+    const { getServerDB } = await import('@/database/server');
+    const db = await getServerDB();
+    const operation = await db.query.agentOperations.findFirst({
+      columns: { userId: true },
+      where: (table, { eq }) => eq(table.id, operationId),
+    });
+    return operation?.userId;
+  } catch {
+    console.error('[HookDispatcher] Failed to resolve webhook operation owner');
     return undefined;
   }
 };
@@ -41,23 +57,28 @@ const waitForEmail = (value: Promise<string | undefined>, signal?: AbortSignal) 
  * Workers resolve independently; this is a five-minute delivery-time cache,
  * not a persisted run identity snapshot.
  */
-export const createWebhookPayloadBuilder = () => {
-  const emails = new Map<string, { expiresAt: number; value: Promise<string | undefined> }>();
-  const resolveEmail = (userId: string) => {
+const createCachedLookup = (read: (key: string) => Promise<string | undefined>) => {
+  const entries = new Map<string, { expiresAt: number; value: Promise<string | undefined> }>();
+  return (key: string) => {
     const now = Date.now();
-    const cached = emails.get(userId);
+    const cached = entries.get(key);
     if (cached && cached.expiresAt > now) return cached.value;
-    emails.delete(userId);
-    if (emails.size >= EMAIL_CACHE_CAPACITY) {
-      const oldest = emails.keys().next().value;
-      if (oldest !== undefined) emails.delete(oldest);
+    entries.delete(key);
+    if (entries.size >= EMAIL_CACHE_CAPACITY) {
+      const oldest = entries.keys().next().value;
+      if (oldest !== undefined) entries.delete(oldest);
     }
-    const value = waitForEmail(readUserEmail(userId));
-    emails.set(userId, { expiresAt: now + EMAIL_CACHE_TTL_MS, value });
+    const value = waitForEmail(read(key));
+    entries.set(key, { expiresAt: now + EMAIL_CACHE_TTL_MS, value });
     return value;
   };
+};
 
-  return async <T extends { userId?: string }>(
+export const createWebhookPayloadBuilder = () => {
+  const resolveEmail = createCachedLookup(readUserEmail);
+  const resolveOwner = createCachedLookup(readOperationOwner);
+
+  return async <T extends { operationId?: string; userId?: string }>(
     event: T,
     webhook: Pick<AgentHookWebhook, 'body' | 'eventFields'>,
     metadata: { hookId: string; hookType: AgentHookType },
@@ -74,17 +95,24 @@ export const createWebhookPayloadBuilder = () => {
     }
     const payload: AgentHookWebhookPayload = { ...selected, ...metadata, ...body };
     delete payload.finalState;
-    // Only the trusted producer event authorizes an email lookup, never webhook body.
+    // Identity comes from the producer or its durable operation, never webhook body alone.
     delete payload.userEmail;
     const userId = 'userId' in payload ? payload.userId : event.userId;
     if (
       (!eventFields || eventFields.includes('userEmail')) &&
       typeof userId === 'string' &&
-      userId &&
-      userId === event.userId
+      userId
     ) {
-      const pending = resolveEmail(userId);
-      const email = await (signal ? waitForEmail(pending, signal) : pending);
+      const lookup = async () => {
+        if (userId !== event.userId) {
+          if (!event.operationId) return undefined;
+          const ownerId = await resolveOwner(event.operationId);
+          if (ownerId !== userId || signal?.aborted) return undefined;
+        }
+        return resolveEmail(userId);
+      };
+      // One deadline covers owner validation and email lookup together.
+      const email = await waitForEmail(lookup(), signal);
       if (signal?.aborted) return undefined;
       if (email !== undefined) payload.userEmail = email;
     }
