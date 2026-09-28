@@ -45,14 +45,6 @@ const METRICS_ACK_TIMEOUT_MS = 15_000;
  * home) shows up.
  */
 const REPLACED_CLOSE_REASON = 'Replaced by new connection';
-/**
- * Only a socket abandoned mid-handshake can reach the gateway after its
- * successor and knock that one off with the same reason: an opened socket was
- * registered before the successor existed, so it can never replace it. The
- * handshake is bounded by `CONNECT_TIMEOUT`, so past that an in-flight upgrade
- * is gone and any takeover is another client.
- */
-const SELF_REPLACE_WINDOW_MS = CONNECT_TIMEOUT;
 
 // ─── Logger Interface ───
 
@@ -131,7 +123,13 @@ export class GatewayClient extends EventEmitter {
     { reject: (error: Error) => void; resolve: () => void }
   >();
   private intentionalDisconnect = false;
-  /** When a socket was last abandoned while its handshake was still in flight. */
+  /**
+   * When a socket was last abandoned while its handshake was still in flight.
+   * Only such a socket can reach the gateway after its successor and knock it
+   * off with the takeover reason: an opened socket was registered before the
+   * successor existed. The handshake is bounded by `connectTimeoutMs`, so past
+   * that an in-flight upgrade is gone and any takeover is another client.
+   */
   private lastInFlightAbandonAt = 0;
   private deviceId: string;
   private connectionId: string;
@@ -509,7 +507,7 @@ export class GatewayClient extends EventEmitter {
     if (
       !this.intentionalDisconnect &&
       reason.toString() === REPLACED_CLOSE_REASON &&
-      Date.now() - this.lastInFlightAbandonAt > SELF_REPLACE_WINDOW_MS
+      Date.now() - this.lastInFlightAbandonAt > this.connectTimeoutMs
     ) {
       // Another client holding our connectionId just took over. Reconnecting
       // would knock it off in turn: the two would trade the connection every

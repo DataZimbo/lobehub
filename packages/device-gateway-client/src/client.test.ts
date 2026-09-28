@@ -766,9 +766,16 @@ describe('GatewayClient', () => {
       replacedClient.disconnect();
     });
 
-    const abandonThenReplace = async (abandonMidHandshake: boolean) => {
+    const abandonThenReplace = async (
+      abandonMidHandshake: boolean,
+      {
+        connectTimeoutMs,
+        takeoverAfterMs = 0,
+      }: { connectTimeoutMs?: number; takeoverAfterMs?: number } = {},
+    ) => {
       const racingClient = new GatewayClient({
         autoReconnect: true,
+        connectTimeoutMs,
         gatewayUrl: 'https://gateway.test.com',
         token: 'tok',
       });
@@ -781,7 +788,7 @@ describe('GatewayClient', () => {
       // Abandon the socket ourselves (watchdog path), then let the retry open.
       (racingClient as any).forceReconnect('stalled');
       mockWsShouldHang = false;
-      await vi.advanceTimersByTimeAsync(1_001);
+      await vi.advanceTimersByTimeAsync(1_001 + takeoverAfterMs);
 
       (racingClient as any).handleClose(1000, Buffer.from('Replaced by new connection'));
       const status = racingClient.connectionStatus;
@@ -792,6 +799,17 @@ describe('GatewayClient', () => {
     it('still reconnects when its own mid-handshake socket arrives late', async () => {
       // The abandoned upgrade reaches the gateway after the retry and knocks it off.
       expect(await abandonThenReplace(true)).toEqual({ replaced: false, status: 'reconnecting' });
+    });
+
+    it('sizes the self-takeover window by the configured connect timeout', async () => {
+      // A 40s handshake budget: an upgrade abandoned 20s ago can still land.
+      expect(
+        await abandonThenReplace(true, { connectTimeoutMs: 40_000, takeoverAfterMs: 20_000 }),
+      ).toEqual({ replaced: false, status: 'reconnecting' });
+      // A 5s budget: 8s later that upgrade is gone, so the takeover is a peer.
+      expect(
+        await abandonThenReplace(true, { connectTimeoutMs: 5_000, takeoverAfterMs: 8_000 }),
+      ).toEqual({ replaced: true, status: 'disconnected' });
     });
 
     it('treats a takeover after abandoning an opened socket as another client', async () => {
