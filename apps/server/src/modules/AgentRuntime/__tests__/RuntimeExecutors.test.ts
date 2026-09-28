@@ -6153,6 +6153,7 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
             identity,
             undefined,
             undefined,
+            expect.any(Function),
           );
           expect(mockDispatcher.dispatchBeforeToolCall).toHaveBeenCalledWith(
             'op-123',

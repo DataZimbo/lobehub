@@ -45,6 +45,7 @@ import {
 import { resolveRunActiveDeviceId } from '../executors/resolveRunActiveDeviceId';
 import { resolveRunProjectSkills } from '../executors/resolveRunProjectSkills';
 import { resolveToolTimeoutMs } from '../resolveToolTimeout';
+import { isToolOperationCancelled } from '../toolCancellation';
 import { buildToolCallHookContext } from './toolCallHookContext';
 
 export class ServerToolTransport implements ToolTransport {
@@ -121,12 +122,15 @@ export class ServerToolTransport implements ToolTransport {
       ...buildToolCallHookContext(call, context, this.ctx),
       originalArgs: structuredClone(context.originalArgs ?? context.parsedArgs),
     };
+    if (await isToolOperationCancelled(this.ctx, context.abortSignal))
+      return { originalArgs: event.originalArgs, status: 'cancelled' };
     if (!this.ctx.hookDispatcher) return { originalArgs: event.originalArgs, status: 'ready' };
     return this.ctx.hookDispatcher.prepareToolCall(
       this.ctx.operationId,
       event,
       context.state.host?.hooks,
       context.abortSignal,
+      () => isToolOperationCancelled(this.ctx, context.abortSignal),
     );
   }
 
@@ -136,7 +140,10 @@ export class ServerToolTransport implements ToolTransport {
     const preparation =
       context.state.toolPreparations?.[chatToolPayload.id] ??
       (await this.prepare(chatToolPayload, context));
-    if (context.abortSignal?.aborted || preparation.status === 'cancelled')
+    if (
+      preparation.status === 'cancelled' ||
+      (await isToolOperationCancelled(this.ctx, context.abortSignal))
+    )
       return this.abortedBeforeLaunch();
     if (preparation.status === 'blocked') {
       const result = {
@@ -167,7 +174,8 @@ export class ServerToolTransport implements ToolTransport {
 
     try {
       const hookResult = await this.dispatchBeforeToolCall(chatToolPayload, context);
-      if (context.abortSignal?.aborted) return this.abortedBeforeLaunch();
+      if (await isToolOperationCancelled(this.ctx, context.abortSignal))
+        return this.abortedBeforeLaunch();
       let toolCallMocked = false;
 
       if (isDeviceToolIdentifier(chatToolPayload.identifier) && !hookResult?.isMocked) {
@@ -209,7 +217,8 @@ export class ServerToolTransport implements ToolTransport {
         // so Stop can land between entering `run` and reaching this line. The
         // executor's race has already settled the call by then — launching now
         // would start side-effecting work for a cancelled operation.
-        if (context.abortSignal?.aborted) return this.abortedBeforeLaunch();
+        if (await isToolOperationCancelled(this.ctx, context.abortSignal))
+          return this.abortedBeforeLaunch();
 
         const dispatchResult = await dispatchClientTool(chatToolPayload, {
           agentId: context.state.origin?.agentId,
@@ -241,7 +250,8 @@ export class ServerToolTransport implements ToolTransport {
 
         // Re-checked after the visibility await for the same reason as above:
         // every await between entry and launch reopens the cancellation window.
-        if (context.abortSignal?.aborted) return this.abortedBeforeLaunch();
+        if (await isToolOperationCancelled(this.ctx, context.abortSignal))
+          return this.abortedBeforeLaunch();
 
         log(`[${operationLogId}] Executing tool ${context.toolName} ...`);
         execution = await executeToolWithRetry(
@@ -315,7 +325,10 @@ export class ServerToolTransport implements ToolTransport {
               workspaceId: context.state.origin?.workspaceId ?? this.ctx.workspaceId,
             }),
           {
-            isInterrupted: () => isOperationInterrupted(this.ctx),
+            isInterrupted: () =>
+              this.ctx.checkToolCancellation
+                ? isToolOperationCancelled(this.ctx, context.abortSignal)
+                : isOperationInterrupted(this.ctx),
             maxRetries: TOOL_MAX_RETRIES,
             onRetry: ({ attempt, kind, maxAttempts }) =>
               log(
