@@ -216,6 +216,26 @@ const mainChanged = (version: string, seq: number) =>
   buildManifest(version, seq, { ...BASE_FILES, 'dist/main/index.js': `main-${version}` });
 
 describe('CoreUpdateManager initialize', () => {
+  it('checks for updates in the background immediately after startup and hourly thereafter', async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager } = await loadManager();
+      manager.startScheduledChecks();
+
+      expect(fetchImpl).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchImpl).toHaveBeenCalledExactlyOnceWith(
+        `${SERVER}/stable/core/${PLATFORM}/latest.json`,
+        { cache: 'no-store' },
+      );
+
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000 - 1);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('reports disabled reasons when shell is missing', async () => {
     const { manager } = await loadManager(makeApp(), null);
     expect(manager.enabled).toBe(false);
