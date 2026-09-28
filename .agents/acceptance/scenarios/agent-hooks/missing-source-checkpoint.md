@@ -1,5 +1,7 @@
 # Missing-source approval recovery — r11
 
+Ready-reuse follow-up r15: [ready-reuse-checkpoint.md](ready-reuse-checkpoint.md) records actual Cloud source API recovery using the existing ready continuation after deterministic older-source expiry. Its 17 hooks and one pending event group are unchanged, with no new messages/operation/HTTP notification. Worker delivery and token/card UI are not covered; historical “ready reuse unverified” statements below describe r11/r12 only.
+
 ## Early preflight follow-up — r12
 
 The coordinator's final candidate `3fc72ae6518459d38516157a24509dbca2839bbf` moves source validation before turn setup, so the older r11 placeholder-error observation below is historical. It is merged/pushed without conflicts into D base `5b762f884d`; actual served docs is `6e26afa771`. Full revisions are in `.acceptances/hooks-d-source-preflight-r12/assets/served.json`.

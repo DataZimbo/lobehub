@@ -82,3 +82,5 @@ The continued preflight has now prepared D-owned dependencies, migrated Postgres
 6. Reuse the same acceptance-checker for exactly one evidence review before ingestion (plan feedback at most two). Publish only after the agreed evidence coverage gate, with the actual CLI-returned URL. Phase 1 performs none of this publication.
 
 - [Real Cloud source Review checkpoint](cloud-review-checkpoint.md): r14 ordinary Stop/replay, generic critical Stop failure, exact private Cloud/OSS combination and UI limits.
+
+- [Ready continuation reuse](ready-reuse-checkpoint.md): real Cloud source retry after older-source expiry, own persisted hooks/ledger unchanged, scheduling-only boundary.
