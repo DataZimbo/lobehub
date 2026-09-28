@@ -279,6 +279,8 @@ export class ExpertiseModel {
         .orderBy(asc(expertiseBindings.sortOrder)),
     ]);
 
+    const bySource = await this.countHitsBySource(lessons.map((lesson) => lesson.id));
+
     return bound.map(({ domain }) => ({
       domain: {
         domainFilter: domain.domainFilter,
@@ -293,6 +295,7 @@ export class ExpertiseModel {
         // reader uses for `taughtByUser`.
         .map(({ originRunId, ...lesson }) => ({
           ...lesson,
+          ...(bySource.get(lesson.id) ?? { conversationHitCount: 0, rejectionHitCount: 0 }),
           authored: lesson.createdByUserId != null && originRunId == null,
         })),
       scopes: bindings
@@ -333,6 +336,9 @@ export class ExpertiseModel {
         checkTitle: verifyCheckResults.checkItemTitle,
         createdAt: expertiseHits.createdAt,
         example: expertiseHits.example,
+        // Read from the run, not from the check-result join: a deleted acceptance leaves that
+        // join empty, and the hit was still a rejection.
+        fromAcceptance: sql<boolean>`coalesce(${expertiseRuns.reflectionKey}, '') like 'acceptance:%'`,
         id: expertiseHits.id,
         reviewerComment: sql<string | null>`${verifyCheckResults.userDecisionDetail} ->> 'comment'`,
         roundIndex: verifyRuns.roundIndex,
@@ -371,33 +377,90 @@ export class ExpertiseModel {
    * many generations as there are. One level is not enough — merging a rule that was itself a
    * merge would otherwise keep the counts and lose the evidence.
    */
-  private resolveLineage = async (lessonId: string): Promise<string[]> => {
-    const readLinks = (ids: string[]) =>
-      this.db
+  private resolveLineage = async (lessonId: string): Promise<string[]> =>
+    (await this.resolveLineages([lessonId])).get(lessonId) ?? [];
+
+  /**
+   * {@link resolveLineage} for many rules at once: one read per generation instead of one walk
+   * per rule, so a whole page of rules costs a handful of queries. A rule outside the caller's
+   * scope maps to an empty lineage.
+   */
+  private resolveLineages = async (lessonIds: string[]) => {
+    const parents = new Map<string, string[]>();
+    let frontier = [...new Set(lessonIds)];
+    // Bounded so a malformed cycle can never spin; real lineages are a handful of steps deep.
+    for (let depth = 0; depth <= 16 && frontier.length > 0; depth += 1) {
+      const rows = await this.db
         .select({
           generalizedFromIds: expertiseLessons.generalizedFromIds,
+          id: expertiseLessons.id,
           salvagedFromId: expertiseLessons.salvagedFromId,
         })
         .from(expertiseLessons)
         .innerJoin(expertiseDomains, eq(expertiseDomains.id, expertiseLessons.domainId))
-        .where(and(inArray(expertiseLessons.id, ids), this.scopeWhere()));
-
-    let frontier = await readLinks([lessonId]);
-    if (frontier.length === 0) return [];
-    const seen = new Set<string>([lessonId]);
-    // Bounded so a malformed cycle can never spin; real lineages are a handful of steps deep.
-    for (let depth = 0; depth < 16 && frontier.length > 0; depth += 1) {
-      const next = frontier
-        .flatMap((lesson) => [
-          ...(lesson.generalizedFromIds ?? []),
-          ...(lesson.salvagedFromId ? [lesson.salvagedFromId] : []),
-        ])
-        .filter((id) => !seen.has(id));
-      if (next.length === 0) break;
-      for (const id of next) seen.add(id);
-      frontier = await readLinks(next);
+        .where(and(inArray(expertiseLessons.id, frontier), this.scopeWhere()));
+      for (const row of rows) {
+        parents.set(row.id, [
+          ...(row.generalizedFromIds ?? []),
+          ...(row.salvagedFromId ? [row.salvagedFromId] : []),
+        ]);
+      }
+      frontier = [...new Set(rows.flatMap((row) => parents.get(row.id) ?? []))].filter(
+        (id) => !parents.has(id),
+      );
     }
-    return [...seen];
+
+    return new Map(
+      lessonIds.map((root) => {
+        if (!parents.has(root)) return [root, []];
+        const seen = new Set<string>([root]);
+        const stack = [root];
+        while (stack.length > 0) {
+          for (const parent of parents.get(stack.pop()!) ?? []) {
+            if (seen.has(parent)) continue;
+            seen.add(parent);
+            stack.push(parent);
+          }
+        }
+        return [root, [...seen]];
+      }),
+    );
+  };
+
+  /**
+   * How many times each rule's lineage was hit by a rejected acceptance versus observed in a
+   * conversation. `hitCount` adds both, and the two mean different things to the reviewer: only
+   * the first is "you rejected a delivery for this".
+   */
+  private countHitsBySource = async (lessonIds: string[]) => {
+    const lineages = await this.resolveLineages(lessonIds);
+    const all = [...new Set([...lineages.values()].flat())];
+    const rows =
+      all.length === 0
+        ? []
+        : await this.db
+            .select({
+              conversations: sql<number>`count(*) filter (where coalesce(${expertiseRuns.reflectionKey}, '') not like 'acceptance:%')::int`,
+              lessonId: expertiseHits.lessonId,
+              rejections: sql<number>`count(*) filter (where ${expertiseRuns.reflectionKey} like 'acceptance:%')::int`,
+            })
+            .from(expertiseHits)
+            .innerJoin(expertiseRuns, eq(expertiseRuns.id, expertiseHits.runId))
+            .where(inArray(expertiseHits.lessonId, all))
+            .groupBy(expertiseHits.lessonId);
+    const byLesson = new Map(rows.map((row) => [row.lessonId, row]));
+
+    return new Map(
+      lessonIds.map((id) => {
+        const lineage = lineages.get(id) ?? [];
+        const sum = (key: 'conversations' | 'rejections') =>
+          lineage.reduce((total, member) => total + (byLesson.get(member)?.[key] ?? 0), 0);
+        return [
+          id,
+          { conversationHitCount: sum('conversations'), rejectionHitCount: sum('rejections') },
+        ];
+      }),
+    );
   };
 
   /**
@@ -907,11 +970,22 @@ export class ExpertiseModel {
     return { id: lessonId };
   };
 
-  /** The next free `P-nn` code inside one domain; codes are unique per domain, not globally. */
+  /**
+   * The next free `P-nn` code inside one domain; codes are unique per domain, not globally.
+   *
+   * Takes the domain row lock first — the same lock distillation holds while it hands out codes —
+   * so two writers in one group queue up instead of computing the same number and having the
+   * unique index reject one of them. The lock lasts until the caller's transaction commits.
+   */
   private nextLessonCode = async (
     tx: Pick<LobeChatDatabase, 'select'>,
     domainId: string,
   ): Promise<string> => {
+    await tx
+      .select({ id: expertiseDomains.id })
+      .from(expertiseDomains)
+      .where(eq(expertiseDomains.id, domainId))
+      .for('update');
     const codes = await tx
       .select({ code: expertiseLessons.code })
       .from(expertiseLessons)
@@ -1070,6 +1144,16 @@ export class ExpertiseModel {
     if (lesson.domainId === domainId) return { domainId, id: lessonId };
 
     return this.db.transaction(async (tx) => {
+      // Re-read under a row lock and copy from that: a merge committed since the read above has
+      // already folded this rule into another one, and copying it now would leave the same
+      // evidence live twice.
+      const [current] = await tx
+        .select()
+        .from(expertiseLessons)
+        .where(eq(expertiseLessons.id, lessonId))
+        .for('update');
+      if (current?.status !== 'active' || current.domainId !== lesson.domainId) return null;
+
       const code = await this.nextLessonCode(tx, domainId);
       const [last] = await tx
         .select({ sortOrder: sql<number>`max(${expertiseLessons.sortOrder})` })
@@ -1095,7 +1179,7 @@ export class ExpertiseModel {
         updatedAt: _updatedAt,
         accessedAt: _accessedAt,
         ...carried
-      } = lesson;
+      } = current;
       const [copy] = await tx
         .insert(expertiseLessons)
         .values({ ...carried, code, domainId, salvagedFromId: lessonId, sortOrder })

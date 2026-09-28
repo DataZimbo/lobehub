@@ -37,6 +37,7 @@ import {
   appendException,
   mergedIntoId,
   revisionAuthorKey,
+  ruleOrigin,
   sectionBody,
   useScopeLabel,
 } from './labels';
@@ -257,6 +258,7 @@ const RuleDocument = ({
   const all = groups.flatMap((g) => g.rules);
   const titleOf = (id: string) => all.find((r) => r.id === id)?.title ?? id;
   const mergedInto = mergedIntoId(rule);
+  const origin = ruleOrigin(rule);
 
   const save = async (patch: UpdateRuleInput) => {
     if (busy) return false;
@@ -396,14 +398,12 @@ const RuleDocument = ({
                 : undefined
             }
           >
-            <Text weight={500}>{t(`rules.reason.${rule.reasonKind ?? 'taste'}`)}</Text>
-            <span className={styles.muted}>
-              {t(
-                rule.reasonSource === 'inferred'
-                  ? 'rules.reason.inferred'
-                  : 'rules.reason.reviewer',
-              )}
-            </span>
+            {/* Conversation learning never classifies its reason; saying "taste, you said it"
+                for those would claim something nobody stated. */}
+            <Text weight={500}>{t(`rules.reason.${rule.reasonKind ?? 'unset'}`)}</Text>
+            {rule.reasonSource && (
+              <span className={styles.muted}>{t(`rules.reason.${rule.reasonSource}`)}</span>
+            )}
           </Property>
           {rule.enforcement === 'block' && rule.reasonKind === 'taste' && (
             <div className={styles.warning}>{t('rules.enforcement.tasteWarning')}</div>
@@ -426,12 +426,10 @@ const RuleDocument = ({
           </Property>
           <Property icon={HistoryIcon} label={t('rules.meta.origin')}>
             <span>
-              {authored
-                ? t('rules.origin.authored')
-                : t('rules.origin.distilled', { hits: rule.hitCount }) +
-                  (rule.lastHitAt
-                    ? t('rules.origin.lastHit', { time: dayjs(rule.lastHitAt).fromNow() })
-                    : '')}
+              {t(`rules.origin.${origin.key}`, 'params' in origin ? origin.params : undefined)}
+              {!authored && rule.lastHitAt
+                ? t('rules.origin.lastHit', { time: dayjs(rule.lastHitAt).fromNow() })
+                : ''}
             </span>
             {Boolean(rule.generalizedFromIds?.length) && (
               <span className={styles.muted}>
@@ -508,7 +506,13 @@ const RuleDocument = ({
             <div className={styles.source} key={source.id}>
               <Flexbox horizontal align={'center'} gap={8} justify={'space-between'}>
                 <Flexbox horizontal align={'center'} gap={6} style={{ minWidth: 0 }}>
-                  <Tag size={'small'}>{t('rules.sources.acceptance')}</Tag>
+                  <Tag size={'small'}>
+                    {t(
+                      source.fromAcceptance
+                        ? 'rules.sources.acceptance'
+                        : 'rules.sources.conversation',
+                    )}
+                  </Tag>
                   <span style={{ fontSize: 13, fontWeight: 500 }}>
                     {source.checkTitle ?? source.where ?? ''}
                   </span>

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { eq } from 'drizzle-orm';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getTestDB } from '../../core/getTestDB';
 import { ExpertiseRuleRepository } from '../../repositories/expertiseRules';
@@ -1000,6 +1000,76 @@ describe('ExpertiseModel', () => {
     ]);
     // The reused group keeps its own gate question; the caller does not get to overwrite it.
     expect(groups[0].domain.domainFilter).toBe('交付标准');
+  });
+
+  it('tells rejections apart from conversation sightings, through a move', async () => {
+    const { first } = await seedRuleGroup();
+    const topicRunId = 'e3f9b0c6-6d0e-4f2e-9b1a-2c4d5e6f7a02';
+    await serverDB.insert(expertiseRuns).values([
+      {
+        actorId: userId,
+        actorType: 'user',
+        domainId: 'rules-domain',
+        id: runId,
+        reflectionKey: 'acceptance:acc-1:run:run-1',
+        runIndex: 1,
+        subjectId: 'x',
+        subjectType: 'standalone',
+        userId,
+      },
+      {
+        actorId: 'agent-1',
+        actorType: 'agent',
+        domainId: 'rules-domain',
+        id: topicRunId,
+        reflectionKey: 'topic:topic-1:operation:op-1',
+        runIndex: 2,
+        subjectId: 'topic-1',
+        subjectType: 'topic',
+        userId,
+      },
+    ]);
+    await serverDB.insert(expertiseHits).values(
+      [runId, topicRunId, topicRunId].map((run) => ({
+        domainId: 'rules-domain',
+        example: '证据',
+        lessonId: first,
+        outcome: 'violation' as const,
+        runId: run,
+      })),
+    );
+    const model = new ExpertiseModel(serverDB, userId);
+
+    const moved = await model.moveRule(first, 'rules-domain-2');
+
+    // The hits stayed on the original; the copy reads them through its lineage.
+    const groups = await model.listRules();
+    expect(groups[1].rules.find(({ id }) => id === moved!.id)).toMatchObject({
+      conversationHitCount: 2,
+      rejectionHitCount: 1,
+    });
+    // Each source is labelled by the run it came from, not by whether its check still exists.
+    const sources = await model.listLessonSources(moved!.id);
+    expect(sources.filter(({ fromAcceptance }) => fromAcceptance)).toHaveLength(1);
+    expect(sources.filter(({ fromAcceptance }) => !fromAcceptance)).toHaveLength(2);
+  });
+
+  it('refuses to move a rule a merge folded in after it was read', async () => {
+    const { first, second } = await seedRuleGroup();
+    await seedHitOn(second);
+    const model = new ExpertiseModel(serverDB, userId);
+    const stale = await model.findLesson(second);
+    await new ExpertiseRuleRepository(serverDB, userId).mergeRules(second, first);
+    // The move read the rule before the merge committed.
+    vi.spyOn(model, 'findLesson').mockResolvedValueOnce(stale);
+
+    expect(await model.moveRule(second, 'rules-domain-2')).toBeNull();
+    expect(await model.findLesson(second)).toMatchObject({
+      rejectedReason: `merged-into:${first}`,
+      status: 'retired',
+    });
+    const groups = await model.listRules();
+    expect(groups[1].rules).toHaveLength(0);
   });
 
   it('keeps the edit history of a rule re-filed with its evidence', async () => {

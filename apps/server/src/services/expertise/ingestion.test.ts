@@ -443,6 +443,24 @@ describe('ExpertiseIngestionService.persistDomainRun', () => {
     expect(lesson?.code).toBe('P-08');
   });
 
+  it('marks a new standard the model could not lift above one delivery as a one-off', async () => {
+    const fake = createTx([]);
+    await persistRun(fake, [observation({ specificity: 'one-off' })]);
+
+    expect(fake.inserted.get(expertiseLessons)?.[0].specificity).toBe('one-off');
+  });
+
+  it('lifts the one-off mark once another round attaches to the standard', async () => {
+    const fake = createTx([
+      { code: 'P-07', id: 'lesson_7', status: 'active', title: 'Separate the runtime plane' },
+    ]);
+    await persistRun(fake, [observation({ existingLessonCode: 'P-07' })]);
+
+    // Recurring in a second round is exactly what a one-off does not do.
+    const lessonUpdate = fake.updates.find((update) => 'hitCount' in update);
+    expect(lessonUpdate).toHaveProperty('specificity');
+  });
+
   it('collapses observations that restate the same rule inside one run', async () => {
     const fake = createTx([]);
     await persistRun(fake, [
