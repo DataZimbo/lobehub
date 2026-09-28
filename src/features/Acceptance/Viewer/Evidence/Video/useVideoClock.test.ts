@@ -74,7 +74,19 @@ describe('useVideoClock', () => {
     expect(video.currentTime).toBe(3);
   });
 
-  it('steps from the painted frame', async () => {
+  it('keeps stepping one frame at a time when a stale frame is reported after a paused seek', async () => {
+    const { hook, video } = setup();
+    video.paused = true;
+    video.currentTime = 163.5 / 30;
+    // The browser reports the frame that was up before the seek landed.
+    act(() => video.paint(162 / 30, 163.5 / 30));
+
+    await act(async () => hook.result.current.controls.step(1));
+
+    expect(video.currentTime).toBeCloseTo(164.5 / 30, 5);
+  });
+
+  it('steps from the painted frame while playing', async () => {
     const { hook, video } = setup();
     act(() => video.paint(7.42, 7.48));
 

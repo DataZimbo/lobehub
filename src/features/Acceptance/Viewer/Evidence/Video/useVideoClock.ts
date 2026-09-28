@@ -45,9 +45,11 @@ export const useVideoClock = (
   /**
    * The time of the frame actually on screen. `currentTime` runs ahead of it:
    * pausing lands a frame or so past what was painted, and a region drawn on
-   * the picture belongs to the picture, not to the media clock. Cleared by
-   * every deliberate seek, so the (asynchronous) pause event never drags a
-   * seek back to the frame that was showing before it.
+   * the picture belongs to the picture, not to the media clock. Only tracked
+   * while playing — once paused, `currentTime` is exact, and a frame reported
+   * after a paused seek may still be the one from before it. Cleared by every
+   * deliberate seek, so the (asynchronous) pause event never drags a seek back
+   * to the frame that was showing before it.
    */
   const paintedRef = useRef<number | undefined>(undefined);
 
@@ -66,8 +68,8 @@ export const useVideoClock = (
     const tick = (_now?: number, frame?: { mediaTime: number }) => {
       const span = loopRef.current;
       if (span && !video.paused && video.currentTime >= span.end) video.currentTime = span.start;
-      paintedRef.current = frame?.mediaTime;
-      setTime(paintedRef.current ?? video.currentTime);
+      if (!video.paused) paintedRef.current = frame?.mediaTime;
+      setTime(video.paused ? video.currentTime : (paintedRef.current ?? video.currentTime));
       schedule();
     };
     const onMeta = () => {
@@ -81,6 +83,7 @@ export const useVideoClock = (
       // Hold the clock on the painted frame, so the readout, a region drawn
       // now and a later seek back all name the frame the reviewer is looking at.
       const painted = paintedRef.current;
+      paintedRef.current = undefined;
       if (painted !== undefined && Math.abs(video.currentTime - painted) > 1e-3)
         video.currentTime = painted;
     };
@@ -115,7 +118,11 @@ export const useVideoClock = (
   const controls = useMemo(
     () => ({
       /** The time of the frame on screen — what a note made right now is about. */
-      frameTime: () => paintedRef.current ?? videoRef.current?.currentTime ?? 0,
+      frameTime: () => {
+        const video = videoRef.current;
+        if (!video) return 0;
+        return video.paused ? video.currentTime : (paintedRef.current ?? video.currentTime);
+      },
       pause: () => videoRef.current?.pause(),
       reload: () => {
         setStatus('loading');
@@ -139,7 +146,7 @@ export const useVideoClock = (
       step: (frames: number) => {
         const video = videoRef.current;
         if (!video) return;
-        const from = paintedRef.current ?? video.currentTime;
+        const from = video.paused ? video.currentTime : (paintedRef.current ?? video.currentTime);
         paintedRef.current = undefined;
         video.pause();
         video.currentTime = steppedTime(from, frames, video.duration || 0);
