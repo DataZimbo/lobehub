@@ -224,6 +224,13 @@ describe('ssrfSafeFetch', () => {
     });
   });
 
+  it.each([204, 205, 304])('preserves bodyless status %i', async (status) => {
+    mockFetch.mockResolvedValue(createMockResponse({ arrayBuffer: new ArrayBuffer(0), status }));
+    const response = await ssrfSafeFetch('https://example.com/empty');
+    expect(response.status).toBe(status);
+    expect(await response.text()).toBe('');
+  });
+
   describe('response conversion', () => {
     it('should convert node-fetch Response to standard Response', async () => {
       const mockArrayBuffer = new ArrayBuffer(10);

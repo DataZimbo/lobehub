@@ -1159,7 +1159,7 @@ describe('TopicModel', () => {
       const hooks = [
         {
           id: 'hook-old',
-          type: 'onComplete',
+          type: 'onComplete' as const,
           webhook: { url: '/callback' },
         },
       ];
@@ -1252,7 +1252,7 @@ describe('TopicModel', () => {
       const childHooks = [
         {
           id: 'hook-child',
-          type: 'onComplete',
+          type: 'onComplete' as const,
           webhook: { url: '/child-callback' },
         },
       ];

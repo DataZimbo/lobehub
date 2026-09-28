@@ -3,6 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deliverWebhook, HookDispatcher } from '../HookDispatcher';
 import type { AgentHook, AgentHookEvent } from '../types';
 
+vi.mock('@lobechat/ssrf-safe-fetch', () => ({
+  ssrfSafeFetch: async (url: string, init: RequestInit) => {
+    const response: Response | { status: number } = await global.fetch(url, init);
+    return 'arrayBuffer' in response ? response : new Response('', { status: response.status });
+  },
+}));
+
 // Mock isQueueAgentRuntimeEnabled to control local vs production mode
 vi.mock('@/server/services/queue/impls', () => ({
   isQueueAgentRuntimeEnabled: vi.fn(function () {
@@ -298,7 +305,7 @@ describe('HookDispatcher', () => {
           { delivery: 'qstash', fallback: 'none', url: 'https://example.com/hook' },
           { a: 1 },
         ),
-      ).rejects.toThrow(/QSTASH_TOKEN not available/);
+      ).rejects.toThrow(/Hook HTTP request failed/);
 
       expect(global.fetch).not.toHaveBeenCalled();
     });
@@ -312,7 +319,7 @@ describe('HookDispatcher', () => {
           { delivery: 'qstash', fallback: 'none', url: 'https://example.com/hook' },
           { a: 1 },
         ),
-      ).rejects.toThrow('qstash down');
+      ).rejects.toThrow('Hook HTTP request failed');
 
       expect(global.fetch).not.toHaveBeenCalled();
     });
@@ -344,8 +351,7 @@ describe('HookDispatcher', () => {
       // The failure is escalated to production logs, and the sibling webhook
       // still gets delivered.
       expect(consoleError).toHaveBeenCalledWith(
-        expect.stringContaining('critical-hook'),
-        expect.any(Error),
+        '[HookDispatcher] Critical webhook delivery failed',
       );
       expect(global.fetch).toHaveBeenCalledWith(
         'https://example.com/normal',

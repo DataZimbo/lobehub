@@ -103,7 +103,7 @@ export const ssrfSafeFetch = async (
         : await response.arrayBuffer();
 
     // Convert node-fetch Response to standard Response
-    return new Response(body, {
+    return new Response([204, 205, 304].includes(response.status) ? null : body, {
       headers: response.headers as any,
       status: response.status,
       statusText: response.statusText,
