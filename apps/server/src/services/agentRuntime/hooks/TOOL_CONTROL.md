@@ -76,17 +76,57 @@ same effective pending calls as the approval card. New continuations inherit
 source hooks (including serialized webhook hooks) and persist after events on
 the host envelope. Actions are grouped by action and rejection reason; each event
 contains only the calls decided by that group. Claim and rollback do not dispatch.
-The first executing continuation drains events under the existing step lock;
+The first executing continuation consumes events under the existing step lock;
 deterministic reuse resumes the saved envelope instead of generating events again.
 
-Explicit stop reports all actually stopped pending native IDs only after runtime
-interruption and durable completion. Ordinary reject does not fabricate a stop.
-The original-operation approval path continues using the same builders.
+The persistence/delivery order for D's recovery checks is:
+
+1. Atomically claim the human decisions on the existing tool rows. No notification
+   is dispatched by the claim or its rollback.
+2. Create the continuation with source hooks and grouped events in `host`, then
+   persist its existing preparation/ready marker before scheduling its first step.
+3. Under the execution step lock, load the saved envelope. For each action group,
+   await the existing dispatcher, save a new envelope containing only the remaining
+   groups, and only then update the in-memory ledger. A failed save keeps the
+   original in-memory ledger intact.
+4. A replacement worker or deterministic reuse reads this same saved remainder.
+   A later group's failure does not resend groups whose checkpoint succeeded.
+   Concurrent deliveries that do not obtain the step lock do not consume events.
+
+The legacy original-operation handler sends its own notifications directly and
+does not create a continuation ledger. The modern claim accepts pending rows or
+its exact deterministic resolution ID; a row already resolved by the legacy
+handler cannot start a second modern handoff. The ready-continuation reuse path
+neither regenerates events nor calls the legacy handler.
+
+Explicit stop is a separate inline path, because no next worker may exist. Its
+order is: validate all pending members, atomically settle their rows, acknowledge
+runtime interruption, persist operation completion, then directly dispatch the
+stop event with every affected native ID. It neither starts a continuation nor
+uses the after-event ledger. A normal replay of an already interrupted,
+same-resolution stop skips notification; an unacknowledged/failed persistence of
+the stop sends none. Ordinary modern reject does not fabricate a stop; the legacy
+reject-and-halt handler retains its existing actual-halt semantics.
+
+Notification response bodies are ignored, even if they resemble a control
+response. They cannot change tool inputs, cancellation, or human decisions.
+Delivery failures retain the existing dispatcher policy: ordinary notification
+failures are logged/swallowed, so the action group is consumed; a critical
+`fallback: 'none'` error exits the drain with that group still pending. Step-level
+critical-error propagation/retry is the separate L change, not a new C2 retry
+loop. Within a group, a retry may redeliver to an earlier hook if a later critical
+hook failed; the ledger checkpoint is per action group, not per HTTP endpoint.
 
 HTTP controls do not retry automatically. A replay before preparation is saved
-may issue another HTTP request. Notification delivery followed by a process crash
-before saving its drained ledger can repeat delivery: there is no outbox or
-cross-crash exactly-once guarantee.
+may issue another HTTP request. For continuation notifications, a crash before
+delivery leaves the group pending; a crash after delivery but before saving its
+checkpoint may repeat it. If the checkpoint succeeded, a normal replacement
+worker does not repeat that group. Inline stop and the legacy direct handler keep
+their existing delivery reliability: a process crash after the terminal write but
+before dispatch can lose a notification, and an already terminal stop replay does
+not reconstruct one. A notification delivery error never rolls back the completed
+stop or human decision. There is no independent outbox, guaranteed delivery, or
+cross-crash exactly-once claim.
 
 ## Verification boundary
 

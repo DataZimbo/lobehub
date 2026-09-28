@@ -278,6 +278,36 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
     prompt: '',
   };
 
+  it.each(['approved', 'rejected'] as const)(
+    'does not hand off a decision already settled by the original operation: %s',
+    async (status) => {
+      const dispatch = vi.spyOn(hookDispatcher, 'dispatch');
+      mockFindMessagePlugin.mockResolvedValue({
+        ...pendingToolPlugin,
+        intervention: { operationId: 'op-parked', status },
+      });
+      try {
+        await expect(
+          service.execAgent({
+            ...baseParams,
+            approvalResolutionRequestId: '018fbd8e-7baf-7c6d-8000-000000000099',
+            approvalSourceOperationId: 'op-parked',
+            resumeApproval: {
+              decision: status,
+              parentMessageId: 'tool-msg-1',
+              toolCallId: 'call_xyz',
+            },
+          }),
+        ).rejects.toThrow();
+        expect(mockResolveHumanApproval).not.toHaveBeenCalled();
+        expect(mockCreateOperation).not.toHaveBeenCalled();
+        expect(dispatch).not.toHaveBeenCalled();
+      } finally {
+        dispatch.mockRestore();
+      }
+    },
+  );
+
   it('retains source hooks and groups mixed decision notifications only on the durable continuation', async () => {
     mockFindById.mockImplementation(async (id: string) => ({
       ...pendingToolMessage,
@@ -1278,6 +1308,9 @@ describe('AiAgentService.stopPendingApproval', () => {
       await service.stopPendingApproval(params);
       await service.stopPendingApproval(params);
       expect(notify).toHaveBeenCalledTimes(1);
+      // Stop has no continuation and must deliver inline without scheduling one.
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+      expect(mockEnsureInterventionContinuationStarted).not.toHaveBeenCalled();
       expect(notify.mock.calls[0][0]).toMatchObject({
         toolCallIds: ['native-tool-msg-1', 'native-tool-msg-2'],
         reason: 'user_stop',

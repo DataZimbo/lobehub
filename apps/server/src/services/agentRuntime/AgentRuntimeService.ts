@@ -1804,20 +1804,25 @@ export class AgentRuntimeService {
           throw new Error(`Agent state not found for operation ${operationId}`);
         }
 
-        // Only a durably prepared continuation reaches this step lock. Claim
-        // and rollback never publish success; repeated queue/reuse deliveries
-        // see the drained ledger. HTTP delivery remains at-least-once on crash.
-        if (agentState.host?.interventionHookEvents?.length) {
-          for (const event of agentState.host.interventionHookEvents) {
-            await hookDispatcher.dispatch(
-              operationId,
-              'afterHumanIntervention',
-              event,
-              agentState.host.hooks,
-            );
-          }
-          agentState.host.interventionHookEvents = [];
-          await this.coordinator.saveAgentState(operationId, agentState);
+        // Claim/rollback do not deliver. A prepared continuation consumes its
+        // saved action groups under the existing step lock. Checkpoint each
+        // group so a later delivery failure does not replay an acknowledged
+        // earlier group. Delivery-before-save crashes can still repeat it;
+        // individual hook failures retain the dispatcher's existing policy.
+        while (agentState.host?.interventionHookEvents?.length) {
+          const [event, ...remaining] = agentState.host.interventionHookEvents;
+          await hookDispatcher.dispatch(
+            operationId,
+            'afterHumanIntervention',
+            event,
+            agentState.host.hooks,
+          );
+          await this.coordinator.saveAgentState(operationId, {
+            ...agentState,
+            host: { ...agentState.host, interventionHookEvents: remaining },
+          });
+          // Do not clear the in-memory ledger until its checkpoint succeeds.
+          agentState.host.interventionHookEvents = remaining;
         }
 
         // A parked approval step is already durable before its generic Review
