@@ -4,7 +4,7 @@ This supersedes historical status/gap summaries, without rewriting any round or 
 
 All 31 stable plan IDs are accounted for: 7 observed, 21 partial, 1 failed, 2 blocked. No aggregate pass is claimed.
 
-Current integration: `ab5d35a6d7b4f009866677f4304b29dea9ac0da1`; private Cloud `69c38102cf1af86917737a96aa02829c1e2eadb4`. r23 served this combination; its docs execution head was `2c414d4f`. Earlier evidence retains its own SHA (r7 served `95d4056`, r12 `5b762f88`, r17 `196787ee`, and each linked checkpoint records the rest). Test-only successors do not relabel earlier execution.
+Current local integration: `d33ba0d76d8ae0c434d2acdf7ba07c8ef5684816` ([r25 diagnostics/checks](qstash-diagnostics-checkpoint.md)). Last served integration: `ab5d35a6d7b4f009866677f4304b29dea9ac0da1`; private Cloud `69c38102cf1af86917737a96aa02829c1e2eadb4`. r23 served this combination; its docs execution head was `2c414d4f`. Earlier evidence retains its own SHA (r7 served `95d4056`, r12 `5b762f88`, r17 `196787ee`, and each linked checkpoint records the rest). Test-only successors do not relabel earlier execution.
 
 Required media are unchanged from [plan.json](plan.json). The table lists those requirements, not a claim of complete media coverage. r23 supplies inspected 24-second single/partial B→C Web recordings; later reject/Stop steps have screenshots and HTTP/DB evidence. Missing subcase media remain incomplete. The same acceptance-checker final assessment is still unused and must wait for the agreed checkpoint; independent code review allocation is exhausted.
 
