@@ -2,7 +2,7 @@
 
 This draft describes the agreed integrated contract. It is not release documentation. D currently starts at F `66af6210`, where registration/restoration deliberately rejects control mode. C1/C2 and notification producer changes must be integrated and verified before publishing this page at `docs/development/basic/agent-runtime-hooks.mdx`.
 
-C1 interface checkpoint: coordinator-supplied `28ee1ad2a0c94dd9dd7afc4b66e5dc62947d1082` implements allow/deny, but treats any response containing `updatedInput` or `additionalContext` as wholly unsupported (`onError` applies, with no partial decision). D has inspected this contract without integrating it. The rewrite/context and complete approval behavior below still requires C2 and the final integrated base. See `c1-interface.md`.
+C2 submitted checkpoint: `5299fed729ff44202e93eb2f5be20a9f0fafa501` removes C1's temporary unsupported guard and implements the rewrite/context contract below. D has inspected the submitted contract without integrating it. Full approval/Cloud wiring and real-product evidence still require the coordinator's final base. See `c2-interface.md`.
 
 ## Register hooks in server code
 
@@ -80,7 +80,7 @@ Controls run before permission checks, approval and batch lane planning, and bef
 
 The same effective input must reach permissions, approval UI, serialized preparation, resource lanes, execution and after-events. Internal tool retries reuse preparation. Approval recovery rechecks from original input; changed effective input invalidates the old approval. Cancellation ends the wait; a late allow cannot start a tool. Both legacy approval resume and modern continuation retain the configured hooks.
 
-Additional context is saved with the tool record, made available to subsequent model context, and deduplicated by tool call and hook. It does not edit user messages or gain system-message privilege. These paragraphs are intended contract, not a claim that F alone implements them.
+Additional context is persisted with the tool record and projected, escaped, into the ordinary tool result for subsequent model input. It is deduplicated by tool row, native tool call and hook; recovery retains prior fragments and replaces a hook's fragment when that hook returns updated guidance. It does not modify stored tool result content or create/edit user or system messages. Denied calls can retain context too. This submitted contract still awaits integrated product verification.
 
 ## Events
 

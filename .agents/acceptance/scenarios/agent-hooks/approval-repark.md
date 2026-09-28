@@ -34,4 +34,4 @@ Use C04/H09/H10 text plus inspected screenshots of original and current cards, e
 
 No new protocol fields, product configuration entry point or assumed C2 method signature is introduced by this plan supplement.
 
-Latest uncommitted C2 preview: `c2-interface-preview.md` adds concrete binding candidates for `supersedes.reapprovedToolCallIds`, OSS/Cloud forwarding, same-operation token/hash rotation versus cross-operation new rows, `pluginState.hookPreparation`, fixed `approvedArguments` and first-step-lock notification dispatch. Treat them as coordinator-reported until the final submitted SHA is inspected.
+Submitted C2 contract at `5299fed7`: `c2-interface.md` adds concrete binding candidates for `supersedes.reapprovedToolCallIds`, OSS/Cloud forwarding, same-operation token/hash rotation versus cross-operation new rows, `pluginState.hookPreparation`, fixed `approvedArguments` and first-step-lock notification dispatch. D has inspected the pinned contract; bind product probes only on the coordinator's final integrated SHA.

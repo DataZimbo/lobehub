@@ -77,7 +77,7 @@
       "category": "人工审批",
       "title": "批准与拒绝能恢复并通知",
       "verifier": "agent",
-      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。分别走旧审批resume和现代continuation；approve/reject/rejectAndContinue，单项与混合batch。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 必跑all-approved/all-rejected/mixed批次；在实际claim/persistence seam失败并证明rollback后重试，复用同一continuation。按native ID核action-specific resolved IDs与实际停止pending IDs；仅effective resolution发通知，rollback不提前报成功，continuation reuse不重复，普通reject不误发stop；与queue replay分开计数。 按approval-repark.md覆盖部分/混合批准后的重新审批与并发旧卡操作；按最终有效decision核通知，repark、旧token失效或claim失败不得伪造成功/stop。 按c2-interface-preview.md核同operation原介入行rotate review token/request hash、跨operation新行；continuation host通知持久化，首次executeStep取得lock后才dispatch。",
+      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。分别走旧审批resume和现代continuation；approve/reject/rejectAndContinue，单项与混合batch。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 必跑all-approved/all-rejected/mixed批次；在实际claim/persistence seam失败并证明rollback后重试，复用同一continuation。按native ID核action-specific resolved IDs与实际停止pending IDs；仅effective resolution发通知，rollback不提前报成功，continuation reuse不重复，普通reject不误发stop；与queue replay分开计数。 按approval-repark.md覆盖部分/混合批准后的重新审批与并发旧卡操作；按最终有效decision核通知，repark、旧token失效或claim失败不得伪造成功/stop。 按c2-interface.md核同operation原介入行rotate review token/request hash、跨operation新行；continuation host通知持久化，首次executeStep取得lock后才dispatch。 按action及rejection reason分组核每个native ID；检查source hooks复制与host.interventionHookEvents中afterHumanIntervention事件，正常消费保存后再replay/reuse不得重复。",
       "expected": "afterHumanIntervention动作/原因/单id兼容、完整toolCallIds；持久hooks恢复；UI及父回复符合所选动作。",
       "requiredEvidence": ["text", "screenshot"]
     },
@@ -86,7 +86,7 @@
       "category": "人工审批",
       "title": "用户停止后不会重新启动",
       "verifier": "agent",
-      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。两套审批路径选择stop，混合batch含已批准/待批准项；随后刷新。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 对照普通reject/rejectAndContinue的stop事件计数为0，明确all-approved/all-rejected/mixed分支及停止时实际pending集合；rollback/reused continuation不得误发stop。 重新审批后核实际有效pending集合；并发旧卡stop不得复活旧batch或使siblings丢失，只有有效停止决定发stop，repark本身不发stop。",
+      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。两套审批路径选择stop，混合batch含已批准/待批准项；随后刷新。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 对照普通reject/rejectAndContinue的stop事件计数为0，明确all-approved/all-rejected/mixed分支及停止时实际pending集合；rollback/reused continuation不得误发stop。 重新审批后核实际有效pending集合；并发旧卡stop不得复活旧batch或使siblings丢失，只有有效停止决定发stop，repark本身不发stop。 Explicit Stop走独立路径：证明interrupt成功且durable completion完成后才通知全部实际pending IDs，不将其误归到afterHumanIntervention host ledger。",
       "expected": "onStopByHumanIntervention携完整关联和原因；终态稳定，未执行工具无副作用。",
       "requiredEvidence": ["text", "screenshot"]
     },
@@ -176,17 +176,17 @@
       "category": "人工审批",
       "title": "改写参数贯穿权限审批与执行lane",
       "verifier": "agent",
-      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。原参数A改写B，两个原本不同资源改写到同资源；审批卡核B，实际执行和后置事件核B。恢复时服务再改为C。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 旧审批resume和现代continuation各执行原始输入重新准备、参数改变后旧批准失效；对同名不同ID及混合batch保留独立批准身份。 按approval-repark.md：只批准原batch部分成员，再改写使其旧批准失效；核同assistant pending siblings不丢失、已完成/终结成员不重跑、新card/effective args一致。旧token不能批准新参数或复活旧batch；对部分/混合处理与并发旧卡approve/reject/stop保存真实时序、最终集合及副作用计数。新接口以C2最终提交为准。 按C2最终接口核重写后权限重检/repark，supersedes.reapprovedToolCallIds经过OSS及Cloud overlay到实际数据库模型，含optional省略对照；保存旧approvedArguments与新effective args，在真实crash窗口恢复仍不可误用旧批准。",
+      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。原参数A改写B，两个原本不同资源改写到同资源；审批卡核B，实际执行和后置事件核B。恢复时服务再改为C。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 旧审批resume和现代continuation各执行原始输入重新准备、参数改变后旧批准失效；对同名不同ID及混合batch保留独立批准身份。 按approval-repark.md：只批准原batch部分成员，再改写使其旧批准失效；核同assistant pending siblings不丢失、已完成/终结成员不重跑、新card/effective args一致。旧token不能批准新参数或复活旧batch；对部分/混合处理与并发旧卡approve/reject/stop保存真实时序、最终集合及副作用计数。接口按C2 5299fed7准备，最终集成时复核。 按C2最终接口核重写后权限重检/repark，supersedes.reapprovedToolCallIds经过OSS及Cloud overlay到实际数据库模型，含optional省略对照；保存旧approvedArguments与新effective args，在真实crash窗口恢复仍不可误用旧批准。 在异步/client移交前检查同一tool row的effective plugin arguments与hookPreparation原子保存；在rewrite已保存但repark未完成的窗口终止自有worker，恢复后旧approvedArguments仍不可批准新参数。录制Web card/审批流程，并以同native ID关联权限、lane及执行参数证据。",
       "expected": "updatedInput完整替换；权限、序列化、lane串行、真实副作用均用最终参数。批准恢复以originalArgs重新检查，不叠加；变化使旧批准失效。",
-      "requiredEvidence": ["text", "screenshot"]
+      "requiredEvidence": ["text", "screenshot", "video"]
     },
     {
       "id": "C05",
       "category": "上下文补充",
       "title": "额外上下文持久且不重复",
       "verifier": "agent",
-      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。context fixture回Marker；保存工具记录并刷新、审批恢复、queue replay，再检查后续LLM输入和用户消息。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 同一native toolCall的不同hook上下文分别保留；同一hook重放去重。 对照真实工具记录pluginState.hookPreparation及冷恢复结果，具体context结构以C2最终提交为准，不以仅内存去重代替保存。",
-      "expected": "additionalContext按toolCall+hook去重保存；后续LLM可用但非system权限，不修改用户消息；同名不同id不误去重。",
+      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。context fixture回Marker；保存工具记录并刷新、审批恢复、queue replay，再检查后续LLM输入和用户消息。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 同一native toolCall的不同hook上下文分别保留；同一hook重放去重。 对照真实工具记录pluginState.hookPreparation及冷恢复结果，context结构按C2 5299fed7准备并在最终集成复核，不以仅内存去重代替保存。 经完整MessagesEngine观测XML转义，按message row/native toolCall/hook三元组去重；重复投影及冷重建不重复，同hook更新的guidance替换旧片段，不同row/call/hook独立。含deny后context保留对照；比对数据库原tool result未被投影改写，实际下一LLM收到普通tool result，无新增user/system角色。",
+      "expected": "additionalContext按tool row/native toolCall/hook去重保存与投影；后续LLM可用但非system权限，不修改用户消息或存储的tool result；同名不同id不误去重。",
       "requiredEvidence": ["text", "screenshot"]
     },
     {
@@ -230,7 +230,7 @@
       "category": "投递与恢复",
       "title": "worker恢复不丢hook配置",
       "verifier": "agent",
-      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。自有worker A创建queue运行后停在受控barrier，B加载相同持久state；审批、终态、子事件分别确认。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 检查tool pluginState.hookPreparation、旧approvedArguments及continuation host事件在新worker恢复；首次executeStep lock前后观测实际投递，未获lock的竞争worker不独立发送。",
+      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。自有worker A创建queue运行后停在受控barrier，B加载相同持久state；审批、终态、子事件分别确认。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 检查tool pluginState.hookPreparation、旧approvedArguments及continuation host事件在新worker恢复；首次executeStep lock前后观测实际投递，未获lock的竞争worker不独立发送。 在异步/client移交前核effective arguments与preparation同一tool row原子落库；记录rewrite落库至repark前crash恢复，分别比对original、旧approvedArguments与effective输入。afterHumanIntervention ledger成功dispatch并保存为空后才认定正常消费完成。",
       "expected": "B空内存仍送HTTP；注册/恢复均schema验证；模板未展开值持久化，原operation hooks保留。",
       "requiredEvidence": ["text"]
     },
@@ -248,9 +248,9 @@
       "category": "设备转发",
       "title": "服务端控制覆盖真实设备工具",
       "verifier": "agent",
-      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。连接真实已授权设备，server runtime发工具至device；allow/deny/rewrite及取消各执行，收设备侧marker/日志和Web卡片。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。",
+      "method": "前置：协调提供最终集成基线、独立完整环境和合成数据。连接真实已授权设备，server runtime发工具至device；allow/deny/rewrite及取消各执行，收设备侧marker/日志和Web卡片。 观测：receiver原始JSONL + 操作/消息/工具记录（脱敏），用native operation/toolCall/step关联；故障记录触发计数与对照。 最终集成SHA重启并证明served code；从execAgent到server/client交接及D本地设备实际执行核相同有效输入，移交前检查持久preparation。录制Web卡/父回复流程并关联权限、lane、gateway和设备marker；此前直接gateway write/read仅环境证据，不充当本项通过。",
       "expected": "控制先于设备转发；deny无设备副作用，rewrite最终参数一致；独立client Runtime和异构内部工具不宣称覆盖。",
-      "requiredEvidence": ["text", "screenshot"]
+      "requiredEvidence": ["text", "screenshot", "video"]
     },
     {
       "id": "D06",

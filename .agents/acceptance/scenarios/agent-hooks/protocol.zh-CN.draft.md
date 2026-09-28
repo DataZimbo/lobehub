@@ -2,7 +2,7 @@
 
 本稿描述已约定的集成协议，不是发布文档。D 当前起点是 F `66af6210`，其中控制模式在注册和恢复时仍会明确拒绝。C1/C2 及通知生产者改动集成并验证后，才可发布到 `docs/development/basic/agent-runtime-hooks.zh-CN.mdx`。
 
-C1 接口检查点：协调提供的 `28ee1ad2a0c94dd9dd7afc4b66e5dc62947d1082` 实现 allow/deny，但包含 `updatedInput` 或 `additionalContext` 的响应整体视为 unsupported，按 `onError` 处理，不部分应用决定。D 仅检查该接口，未集成。下文 rewrite/context 及完整审批行为仍等待 C2 和最终集成基线；参见 `c1-interface.md`。
+C2 已提交检查点：`5299fed729ff44202e93eb2f5be20a9f0fafa501` 已移除 C1 的临时 unsupported 限制并实现下文 rewrite/context 契约。D 已检查提交接口，尚未集成；完整审批、Cloud 转发及真实产品证据仍等待协调的最终基线。参见 `c2-interface.md`。
 
 ## 从服务端代码注册
 
@@ -80,7 +80,7 @@ Runtime 模式与 webhook 传输方式是两个选择。`delivery:'fetch'` 为�
 
 权限、审批卡、序列化准备状态、资源 lane、真实执行及后置事件应使用同一份有效参数。工具内部重试复用准备结果。审批恢复从 originalArgs 重新检查；有效参数改变则旧批准失效。取消中止等待，晚到 allow 不能启动工具。旧审批恢复和现代 continuation 都保留 Hook 配置。
 
-additionalContext 随工具记录保存，进入后续模型上下文，按 toolCall 与 hook 去重，不修改用户消息，不提升为 system 权限。本节是目标协议，不表示 F 单独实现了这些行为。
+additionalContext 随工具记录持久化，转义后投影到后续模型输入中的普通 tool result，按工具行、原生 toolCall 和 hook 去重；恢复保留先前片段，同一 hook 返回更新指引时替换该片段。不改写存储的工具结果内容，不创建或改写 user/system 消息；被拒绝的调用也可保留上下文。该已提交契约仍待集成产品验证。
 
 ## 事件
 
