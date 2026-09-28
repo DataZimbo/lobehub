@@ -69,14 +69,15 @@ describe('PageAgentExecutor', () => {
     expect(runPageBash).not.toHaveBeenCalled();
   });
 
-  it('stops the agent loop when the page changed under the command', async () => {
+  it('fails the call visibly when the page changed under the command', async () => {
     runPageBash.mockRejectedValue(new PageChangedDuringCommandError());
 
     const result = await executor.invoke('bash', { command: "sed -i 's/a/b/' /doc.xml" }, context);
 
     expect(result.success).toBe(false);
-    expect(result.stop).toBe(true);
+    expect(result.stop).toBeUndefined();
     expect(result.error?.type).toBe('PageChangedDuringCommand');
+    expect(result.content).toMatch(/nothing was written/i);
   });
 
   it('reports a thrown error as a failed call', async () => {

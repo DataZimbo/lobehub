@@ -69,7 +69,6 @@ class PageAgentExecutor extends BaseExecutor<typeof PageAgentApiName> {
       return {
         content: err.message,
         error: { message: err.message, type: 'PageChangedDuringCommand' },
-        stop: true,
         success: false,
       };
     }

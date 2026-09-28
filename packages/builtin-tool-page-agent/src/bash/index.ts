@@ -96,7 +96,7 @@ const readIfExists = async (
 export class PageChangedDuringCommandError extends Error {
   constructor() {
     super(
-      'The page changed while the command was running (it was edited or another page was opened), so nothing was written. Stop and tell the user.',
+      'The page changed while the command was running (it was edited or another page was opened), so nothing was written. Tell the user; if they still want the edit, read the page again before retrying.',
     );
     this.name = 'PageChangedDuringCommandError';
   }
