@@ -6104,6 +6104,59 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         expect(handler).toHaveBeenCalledTimes(1);
         expect(mockToolExecutionService.executeTool).toHaveBeenCalledTimes(1);
       });
+      it.each([false, true])(
+        'preserves share visitor identity in tool hooks (throws: %s)',
+        async (throws) => {
+          const mockDispatcher = {
+            dispatch: vi.fn().mockResolvedValue(undefined),
+            prepareToolCall: vi.fn().mockImplementation(async (_op, event) => ({
+              originalArgs: event.args,
+              status: 'ready',
+            })),
+            dispatchBeforeToolCall: vi.fn().mockResolvedValue(null),
+          };
+          if (throws)
+            mockToolExecutionService.executeTool.mockRejectedValue(new Error('Tool failed'));
+          const state = createToolState({
+            principal: {
+              actor: {
+                shareVisitor: {
+                  agentId: 'shared-agent',
+                  shareId: 'share-1',
+                  visitorUserId: 'visitor-1',
+                },
+              },
+            },
+          });
+
+          await createRuntimeExecutors({ ...ctx, hookDispatcher: mockDispatcher as any })
+            .call_tool!(createToolInstruction(), state);
+
+          expect(mockToolExecutionService.executeTool).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ userId: 'user-123' }),
+          );
+          expect(ctx.userId).toBe('user-123');
+          const identity = expect.objectContaining({ userId: 'visitor-1' });
+          expect(mockDispatcher.prepareToolCall).toHaveBeenCalledWith(
+            'op-123',
+            identity,
+            undefined,
+            undefined,
+          );
+          expect(mockDispatcher.dispatchBeforeToolCall).toHaveBeenCalledWith(
+            'op-123',
+            identity,
+            undefined,
+          );
+          expect(mockDispatcher.dispatch).toHaveBeenCalledWith(
+            'op-123',
+            throws ? 'onToolCallError' : 'afterToolCall',
+            identity,
+            undefined,
+          );
+        },
+      );
 
       it('should preserve native identity and structured results across tool notifications', async () => {
         const mockDispatcher = {
@@ -6148,6 +6201,7 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
 
         const identity = {
           activeDeviceId: 'device-1',
+          userId: 'user-123',
           agentId: 'child-agent',
           apiName: 'search_tweets',
           args: { query: 'test' },
