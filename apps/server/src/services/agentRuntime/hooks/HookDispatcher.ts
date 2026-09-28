@@ -18,8 +18,10 @@ import type {
   AgentHookType,
   AnyHookEvent,
   SerializedHook,
+  ToolCallControlEvent,
   ToolCallHookEvent,
 } from './types';
+import { createWebhookPayloadBuilder } from './webhookPayload';
 
 const log = debug('lobe-server:hook-dispatcher');
 
@@ -40,24 +42,6 @@ export function parseSerializedHooks(hooks: SerializedAgentHook[]): SerializedHo
   return hooks.map((hook) => serializedAgentHookSchema.parse(hook));
 }
 
-function buildWebhookPayload(event: AnyHookEvent, eventFields?: string[]): Record<string, unknown> {
-  if (eventFields) {
-    const payload: Record<string, unknown> = {};
-    for (const field of eventFields) {
-      if (field === 'finalState') continue;
-      if (field in event) payload[field] = (event as unknown as Record<string, unknown>)[field];
-    }
-    return payload;
-  }
-
-  const payload = { ...event };
-  if ('mock' in payload) delete (payload as { mock?: unknown }).mock;
-  if ('finalState' in payload) {
-    delete (payload as { finalState?: unknown }).finalState;
-  }
-  return payload;
-}
-
 /**
  * HookDispatcher — central hub for registering and dispatching agent lifecycle hooks
  *
@@ -66,6 +50,8 @@ function buildWebhookPayload(event: AnyHookEvent, eventFields?: string[]): Recor
  *   delivered via HTTP POST or QStash
  */
 export class HookDispatcher {
+  private readonly buildWebhookPayload = createWebhookPayloadBuilder();
+
   /** Continuations retain local callbacks when present and validated durable webhooks otherwise. */
   getContinuationHooks(operationId: string, serializedHooks?: SerializedAgentHook[]): AgentHook[] {
     // The schema's cross-field refinements enforce AgentHook's discriminated
@@ -128,12 +114,14 @@ export class HookDispatcher {
         if (useHandler) {
           await handler(event as AgentHookEvent);
         } else if (hook.webhook) {
-          await deliverWebhook(hook.webhook, {
-            ...buildWebhookPayload(event, hook.webhook.eventFields),
+          const payload = await this.buildWebhookPayload(event, hook.webhook, {
             hookId: hook.id,
             hookType: type,
-            ...hook.webhook.body,
           });
+          if (payload) {
+            delete payload.mock;
+            await deliverWebhook(hook.webhook, payload);
+          }
         }
       } catch (error) {
         if (!useHandler && hook.webhook?.fallback === 'none') {
@@ -161,11 +149,11 @@ export class HookDispatcher {
   /** Ordered synchronous controls. Cancellation never goes through onError. */
   async prepareToolCall(
     operationId: string,
-    event: Omit<ToolCallHookEvent, 'mock'>,
+    event: ToolCallControlEvent,
     serializedHooks?: SerializedAgentHook[],
     signal?: AbortSignal,
   ): Promise<ToolCallPreparation> {
-    const originalArgs = structuredClone(event.originalArgs ?? event.args);
+    const originalArgs = structuredClone(event.originalArgs);
     const ready: ToolCallPreparation = {
       originalArgs,
       additionalContexts: [],
@@ -183,17 +171,18 @@ export class HookDispatcher {
         !matchesHook(hook.matcher, event)
       )
         continue;
-      const response = await executeToolCallWebhook(
-        hook.webhook,
+      const payload = await this.buildWebhookPayload(
         {
           ...event,
           args: structuredClone(ready.effectiveArgs ?? originalArgs),
           originalArgs: structuredClone(originalArgs),
-          hookId: hook.id,
-          hookType: 'beforeToolCall',
         },
+        {},
+        { hookId: hook.id, hookType: 'beforeToolCall' },
         { signal },
       );
+      if (!payload || signal?.aborted) return { originalArgs, status: 'cancelled' };
+      const response = await executeToolCallWebhook(hook.webhook, payload, { signal });
       if (signal?.aborted || response.status === 'cancelled')
         return { originalArgs, status: 'cancelled' };
       if (response.status === 'error') {
