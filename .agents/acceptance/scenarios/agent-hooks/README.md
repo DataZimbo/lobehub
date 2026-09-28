@@ -2,9 +2,11 @@
 
 Cloud-dependent blocked subcases and the minimal real entry are listed in [cloud-blocked-subcases.md](cloud-blocked-subcases.md). OSS evidence is retained separately; no generic token/UI pass is inferred from the compatibility fallback.
 
-Current status: preparation is complete and bounded product observations are recorded; the full 31-item acceptance is not complete. D draft PR #20137 targets its own integration-base, currently `8637eb393b085f2c96d4e9be415ac86f0519c4dc` (C2 de4148cdc4, fixed C1, S/K/L). See [integration-progress.md](integration-progress.md) and the execution/notification/Stop checkpoints for exact historical execution SHAs and remaining gaps. The initial phase-1 instructions below describe preparation provenance; they do not describe the currently integrated controls as unsupported. No final published acceptance or ready status is claimed.
+Current status: preparation is complete and bounded product observations are recorded; the full 31-item acceptance is not complete. D draft PR #20137 targets its own integration-base, currently `81591e7112181cf29d0564af726ed6946a4acee1` (C2 507b37f9, fixed C1, S/K/L). See [integration-progress.md](integration-progress.md) and the execution/notification/Stop checkpoints for exact historical execution SHAs and remaining gaps. The initial phase-1 instructions below describe preparation provenance; they do not describe the currently integrated controls as unsupported. No final published acceptance or ready status is claimed.
 
 Latest owner reconciliation: [owner-regression-checkpoint.md](owner-regression-checkpoint.md), 1267 tests/lint passed; full types 1444/1444, identical diagnostics and still failed.
+
+Latest product supplement: [cold-card-checkpoint.md](cold-card-checkpoint.md). Cold B and fresh B→C reapproval/device execution were observed; an expired-source recovery path lost hooks and remains a reported failure.
 
 ## Files and finishing criteria
 
