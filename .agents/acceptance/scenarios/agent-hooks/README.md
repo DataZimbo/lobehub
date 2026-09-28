@@ -1,8 +1,8 @@
-# D: integration preparation (phase 1)
+# D: Hook integration and acceptance work in progress
 
 Cloud-dependent blocked subcases and the minimal real entry are listed in [cloud-blocked-subcases.md](cloud-blocked-subcases.md). OSS evidence is retained separately; no generic token/UI pass is inferred from the compatibility fallback.
 
-Status: preparation only. Starting revision `66af6210de918a26394f9afe5a389ac99c3de71f` is F, **not** the integrated product. Its dispatcher explicitly rejects control hooks until C1 integration. Do not publish `plan.json` as a completed result. Product execution and a public documentation PR wait for the coordinator's final base.
+Current status: preparation is complete and bounded product observations are recorded; the full 31-item acceptance is not complete. D draft PR #20137 targets its own integration-base, currently `03282d19a248aef0b8899e3eedce52f23edea272` (C2 64b9424b, fixed C1, S/K/L). See [integration-progress.md](integration-progress.md) and the execution/notification/Stop checkpoints for exact historical execution SHAs and remaining gaps. The initial phase-1 instructions below describe preparation provenance; they do not describe the currently integrated controls as unsupported. No final published acceptance or ready status is claimed.
 
 ## Files and finishing criteria
 

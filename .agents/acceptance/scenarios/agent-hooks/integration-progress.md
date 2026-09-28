@@ -36,3 +36,11 @@ This is an in-progress handoff, not an acceptance verdict or published report.
 - Static Cloud `deliveryV2 -> defaultDeliveryV2 -> createBatchWithSupersession` forwards the whole `supersedes` object. This is not runtime proof.
 - Real model credentials and managed QStash access remain unavailable. The coordinator owns the outstanding provider-location question.
 - The same acceptance-checker has one final evidence review remaining. No final acceptance URL or passing report has been published.
+
+## Stop request isolation supplement
+
+C2 `64b9424b932aa9953ff3571d467fd136b3b2ccae` is merged without conflicts into the existing D integration-base `03282d19a248aef0b8899e3eedce52f23edea272`, retaining C1 7a6dd20f, S 76707138, K 5e3a2f73 and L b9fda258. Relative to C2 608593a3, only two test files change (+68 lines); production behavior is unchanged. D read the exact diff and `/tmp/lobehub-hook-c2-stop-isolation-check.log`: C2 reports 80 tests / lint / full type clean in its own snapshot, not D's environment.
+
+The assertions reject different or missing resolution IDs, wrong batch IDs and incomplete Stop member sets in both pending and consumed states, without delivery, claim, completion or marker changes. Database assertions reject foreign-owner or terminal completion without partially writing a marker, and reject marker consumption when status is not interrupted. D's r4 real HTTP/DB observations keep their original executed SHA and bounded synthetic-resolution provenance. These extra assertions do not establish the missing generic Review UI path or close P1's independent review.
+
+No product service was restarted for this test-only update. D's consolidated limited regression and same-environment type comparison remain pending reconciliation of the owner's RuntimeExecutors fixture repair. The handoff file now mentions later card/fixture commits and the remote PR has advanced; those versions are not silently substituted for this explicitly pinned integration. Current Cloud SPA compilation, real model configuration and managed QStash gaps remain open. No final acceptance URL or ready transition is claimed.
