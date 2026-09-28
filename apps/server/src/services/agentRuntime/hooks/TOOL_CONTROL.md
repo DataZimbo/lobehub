@@ -19,6 +19,27 @@ called once; the first mock wins. Legacy dual handler/webhook hooks select the
 handler locally and the webhook in queue mode. Critical notification callbacks
 retain `fallback: 'none'` failure propagation.
 
+## Hook trigger identity
+
+All 16 hook events identify the session trigger in `userId`: the trusted
+`state.principal.actor.shareVisitor.visitorUserId`, when present, otherwise the
+producer's existing run user. `resolveHookUserId` from `@lobechat/agent-runtime`
+applies this nullish fallback. Tool arguments, HTTP request fields and message
+content are not identity sources; no `actorUserId` field is added.
+
+This projection changes event payloads only. Run origins, service/model accounts,
+authorization and persisted ownership continue to use the owner. Internal local
+callbacks retain their trusted owner closures; internal QStash callbacks retain
+their server-created static owner context or reload operation metadata. Consumers
+must not treat an external event's `userId` as an account authorization.
+
+Parent call-agent notifications use the loaded parent's share context. Human
+resolution events are stamped from the validated source state and persisted with
+the continuation; the worker also projects older saved owner identities using its
+trusted share context. State readers retain their existing legacy normalization.
+The share entry point still forces headless approval and blocks sub-agent
+dispatch; this identity change does not make those paths available to visitors.
+
 ## Preparation and persistence
 
 - `RuntimeConfig.prepareTools(context, state)` runs before runtime decisions;
