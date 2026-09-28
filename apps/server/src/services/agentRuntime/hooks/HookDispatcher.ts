@@ -307,7 +307,8 @@ export class HookDispatcher {
       }
       return {
         ...hook,
-        matcher: hook.matcher ? agentHookMatcherSchema.parse(hook.matcher) : undefined,
+        matcher:
+          hook.matcher !== undefined ? agentHookMatcherSchema.parse(hook.matcher) : undefined,
       };
     });
     const existing = this.hooks.get(operationId) || [];
