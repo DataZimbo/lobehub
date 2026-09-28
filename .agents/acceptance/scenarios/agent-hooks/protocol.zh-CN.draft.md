@@ -1,6 +1,6 @@
 # Agent Runtime HTTP Hook — 未发布集成草稿
 
-本稿对应集成基线 `50001f8b7e50743c1daa2df35a7b6fa2e90131df`（C2 + S + K + L），不是发布文档。当前实现已接入 allow/deny、完整参数替换与额外上下文，临时控制限制已移除。
+本稿对应集成基线 `cad39cb803a8dfd5830130fd58dc2c2038271609`（C2 + S + K + L），不是发布文档。当前实现已接入 allow/deny、完整参数替换与额外上下文，临时控制限制已移除。
 
 实际 HTTP / 设备检查正在进行。D 已观察到改写后的工具参数与 Web 审批卡不一致；现有 Cloud checkout 与集成 OSS 的编译兼容性也阻断了现代审批验证。下文审批 /card 描述是待修复验证的目标契约。真实模型推理和托管 QStash 投递尚缺测试凭据；不得将本稿视为验收通过或已验证的发布指南。
 
@@ -73,7 +73,7 @@ Runtime 模式与 webhook 传输方式是两个选择。`delivery:'fetch'` 为�
 
 现代 continuation 将最终决策分组持久化到 host。在现有 step lock 内逐组投递、保存剩余列表，再更新内存；后组失败不重投已完成 checkpoint 的前组。普通投递失败沿 dispatcher 记录并消费该组；`fallback:'none'` 保留失败组并上抛 `CriticalHookDeliveryError`。checkpoint 以 action group 为单位；组内多个 endpoint 部分失败时，已成功的 endpoint 仍可能重投。
 
-HTTP 已送达但 checkpoint 尚未保存时崩溃，可重复投递；checkpoint 完成后的普通 continuation reuse 或替换 worker 不再重发该组。Stop 与旧审批沿直接投递路径：决策 / 终态已持久化但 dispatch 前崩溃可能丢通知，已 terminal 的 Stop 重放不重建通知。通知失败不回滚已完成的 Stop 或决策。不保证送达，不提供 outbox 或跨崩溃 exactly-once；通知响应里的 deny / 参数改写也会被忽略。
+HTTP 已送达但 checkpoint 尚未保存时崩溃，可重复投递；checkpoint 完成后的普通 continuation reuse 或替换 worker 不再重发该组。现代 Stop 将 interrupted 状态和待投递 batch 标记原子写入现有 operation 后直接投递；dispatch 返回后，按 owner /batch/status 条件消费标记。critical 失败保留标记，同一 resolution 请求可从持久 host hooks 重试，业务状态始终 interrupted。缺少 runtime state 或消费保存失败会明确报错，不能返回成功。消费完成后的普通 replay 不再投递；普通通知失败仍被吞掉并消费。dispatch 前崩溃会留下标记供请求重试；送达后崩溃、消费保存失败或并发重试均可能重复。没有后台 Stop 重试，标记是完成 checkpoint，不是投递租约。无标记的旧终态不补造通知；独立的旧审批直接投递路径仍可能在决策保存后、dispatch 前丢通知。通知失败不回滚已完成的 Stop 或决策。不保证送达，不提供 outbox 或跨崩溃 exactly-once；通知响应里的 deny / 参数改写也会被忽略。
 
 ## 请求与响应
 

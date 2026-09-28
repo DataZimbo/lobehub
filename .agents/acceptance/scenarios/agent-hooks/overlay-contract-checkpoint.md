@@ -1,5 +1,7 @@
 # Overlay contract supplement — quality checks only
 
+Latest Stop repair is submitted and temporarily integrated; see [stop-retry-checkpoint.md](stop-retry-checkpoint.md). Earlier candidate/uncommitted status below is historical. Cloud product evidence and final independent repair review remain open.
+
 C2 `cde2ebce24983de0ff10d623992b131d7b22383a` is merged into D-owned integration-base `50001f8b7e50743c1daa2df35a7b6fa2e90131df`, without conflicts. S/K/L ancestry is verified. The delta from C2 83496341 contains exactly three files: TOOL\_CONTROL documentation and two existing test files, adding DTO reapprovedToolCallIds forwarding and same/cross-operation old-token/revision rejection assertions. Runtime code is unchanged; no merge repair was hidden in this update.
 
 D executed:

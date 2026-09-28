@@ -1,5 +1,7 @@
 # Notification boundary supplement — not final acceptance
 
+Latest Stop repair is submitted and temporarily integrated; see [stop-retry-checkpoint.md](stop-retry-checkpoint.md). Earlier candidate/uncommitted status below is historical. Cloud product evidence and final independent repair review remain open.
+
 Integration base `a471e3876a3ecd25cb233108754e1be3f0ac2cc3` incorporates C2 `834963412a25506add4cb8de4721d4dc17957f57` without conflicts, retaining S/K/L and C1/H/F/T. Docs merge `6f1946646e69a2f18b9ef7e259f2aed2cc7218c8` is the executed source. No D product repair was added. Earlier `.acceptances/hooks-d-integrated-r1/` evidence remains bound to `858b2d45`; it is not relabeled as testing this change.
 
 Affected criteria: H09/H10/D03/D04. New evidence is `.acceptances/hooks-d-notification-r2/assets/`; the ignored `driver.ts` and `worker.ts` preserve the exact fixture and process boundary. This is a bounded runtime supplement, not the final report or a published acceptance.
