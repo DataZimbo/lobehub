@@ -3762,7 +3762,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         await executors.call_tool!(instruction, state);
 
         expect(mockMessageModel.create).toHaveBeenCalledTimes(1);
-        expect(mockMessageModel.updateToolMessage).not.toHaveBeenCalled();
+        expect(mockMessageModel.updateToolMessage).toHaveBeenCalledWith('msg-123', {
+          pluginArguments: '{}',
+          pluginState: { hookPreparation: { originalArgs: {}, status: 'ready' } },
+        });
       });
     });
   });
@@ -3893,8 +3896,18 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       const executors = createRuntimeExecutors(ctx);
       const state = createMockState();
       mockMessageModel.query.mockResolvedValueOnce([
-        { id: 'existing-tool-1', role: 'tool', tool_call_id: 'tool-call-1' },
-        { id: 'existing-tool-2', role: 'tool', tool_call_id: 'tool-call-2' },
+        {
+          id: 'existing-tool-1',
+          parentId: 'assistant-msg-1',
+          role: 'tool',
+          tool_call_id: 'tool-call-1',
+        },
+        {
+          id: 'existing-tool-2',
+          parentId: 'assistant-msg-1',
+          role: 'tool',
+          tool_call_id: 'tool-call-2',
+        },
       ]);
 
       await executors.request_human_approve!(
@@ -6603,7 +6616,15 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           'op-123',
           'beforeHumanIntervention',
           expect.objectContaining({
-            pendingTools: [{ apiName: 'post_tweet', identifier: 'twitter' }],
+            pendingTools: [
+              {
+                apiName: 'post_tweet',
+                args: {},
+                arguments: '{}',
+                identifier: 'twitter',
+                toolCallId: 'tc-1',
+              },
+            ],
           }),
           undefined, // serializedHooks from state.metadata._hooks
         );

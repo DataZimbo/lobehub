@@ -9,6 +9,9 @@ import { execAgentMember, execAgentThreadRun, type SubAgentRunDeps } from '../su
 
 vi.mock('@/libs/qstash', () => ({ OtelQstashClient: vi.fn() }));
 vi.mock('@/server/services/queue/impls', () => ({ isQueueAgentRuntimeEnabled: vi.fn() }));
+vi.mock('@lobechat/ssrf-safe-fetch', () => ({
+  ssrfSafeFetch: (url: string, init: RequestInit) => globalThis.fetch(url, init),
+}));
 
 const types = ['beforeCallAgent', 'afterCallAgent', 'onCallAgentError'] as const;
 const serializedHooks = types.map((type) => ({
