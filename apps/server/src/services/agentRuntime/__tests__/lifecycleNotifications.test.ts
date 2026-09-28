@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isQueueAgentRuntimeEnabled } from '@/server/services/queue/impls';
 
 import { AgentRuntimeService } from '../AgentRuntimeService';
+import { CriticalAgentInterventionPersistenceError } from '../CompletionLifecycle';
 import { CriticalHookDeliveryError, hookDispatcher } from '../hooks';
 import type { AgentHookEvent } from '../hooks/types';
 
@@ -141,6 +142,19 @@ const setup = (state = makeState()) => {
   vi.spyOn((service as any).completionLifecycle, 'persistCompletion').mockResolvedValue(true);
   vi.spyOn((service as any).completionLifecycle, 'registerFileWorks').mockResolvedValue(undefined);
   return { service, coordinator, step, newState };
+};
+// Observe the real producer's durable-state boundary, including any error rewrite.
+const observeStateWrites = (coordinator: ReturnType<typeof setup>['coordinator']) => {
+  const writes: Array<{ error?: unknown; status: string }> = [];
+  const save = async (_operationId: string, state: { error?: unknown; status: string }) => {
+    writes.push(structuredClone(state));
+    coordinator.loadAgentState.mockResolvedValue(state);
+  };
+  coordinator.saveAgentState.mockImplementation(save);
+  coordinator.saveStepResult.mockImplementation(
+    async (id: string, result: { newState: { status: string } }) => save(id, result.newState),
+  );
+  return writes;
 };
 const execute = (service: AgentRuntimeService) =>
   service.executeStep({
@@ -315,13 +329,17 @@ describe('lifecycle notifications from executeStep', () => {
   });
 
   it('keeps a thrown structured runtime failure in the original complete/error pair', async () => {
-    const { service, step } = setup();
-    step.mockRejectedValue({
+    const { service, step, coordinator } = setup();
+    const writes = observeStateWrites(coordinator);
+    const error = {
       type: 'ProviderFailure',
       message: 'provider failed',
       body: { upstream: { status: 503 } },
-    });
-    await expect(execute(service)).rejects.toMatchObject({ message: 'provider failed' });
+    };
+    step.mockRejectedValue(error);
+    await expect(execute(service)).rejects.toBe(error);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ status: 'error', error });
     expect(httpEvents().map((event) => event.hookType)).toEqual([
       'beforeStep',
       'onComplete',
@@ -377,21 +395,111 @@ describe('lifecycle notifications from executeStep', () => {
     },
   );
 
-  it('propagates a critical completion delivery failure without turning it into a runtime error', async () => {
-    const state = makeState();
-    state.host.hooks = [
-      {
-        id: 'critical',
-        type: 'onComplete',
+  it.each([
+    { status: 'done', failingHook: 'onComplete' },
+    { status: 'error', failingHook: 'onComplete' },
+    { status: 'error', failingHook: 'onError' },
+  ] as const)(
+    'rethrows the same critical $failingHook error without rewriting $status or redispatching',
+    async ({ status, failingHook }) => {
+      vi.mocked(isQueueAgentRuntimeEnabled).mockReturnValue(true);
+      const state = makeState();
+      state.host.hooks = (['onComplete', 'onError'] as const).map((type) => ({
+        id: type,
+        type,
         webhook: { url: 'https://example.com/hooks', fallback: 'none' },
-      } as any,
-    ];
-    safeFetch.mockRejectedValue(new Error('critical callback unavailable'));
-    const { service, coordinator } = setup(state);
-    await expect(execute(service)).rejects.toBeInstanceOf(CriticalHookDeliveryError);
-    expect(httpEvents().map((event) => event.hookType)).toEqual(['onComplete']);
+      }));
+      const { service, coordinator, step, newState } = setup(state);
+      const businessError = {
+        type: 'ProviderFailure',
+        message: 'original business error',
+        body: { status: 503 },
+      };
+      const terminalState = {
+        ...newState,
+        status,
+        ...(status === 'error' && { error: businessError }),
+      };
+      step.mockResolvedValue({
+        events: [{ type: 'done', reason: status }],
+        newState: terminalState,
+        nextContext: null,
+      });
+      const writes = observeStateWrites(coordinator);
+      const lifecycle = (service as any).completionLifecycle;
+      // Both spies call through: the real HTTP dispatcher constructs the critical
+      // error, and both real catch blocks must propagate that exact same instance.
+      const dispatcherSpy = vi.spyOn(hookDispatcher, 'dispatch');
+      const lifecycleSpy = vi.spyOn(lifecycle, 'dispatchHooks');
+      safeFetch.mockImplementation(async (_url, request) => {
+        if (JSON.parse(request.body).hookType === failingHook)
+          throw new Error('callback unavailable');
+        return new Response('{}');
+      });
+
+      const thrown = await execute(service).catch((error) => error);
+      const lifecycleError = await lifecycleSpy.mock.results[0].value.catch(
+        (error: unknown) => error,
+      );
+      const failedDispatch = dispatcherSpy.mock.calls.findIndex(([, type]) => type === failingHook);
+      const dispatcherError = await dispatcherSpy.mock.results[failedDispatch].value.catch(
+        (error: unknown) => error,
+      );
+      expect(thrown).toBeInstanceOf(CriticalHookDeliveryError);
+      expect(thrown).toBe(lifecycleError);
+      expect(thrown).toBe(dispatcherError);
+      expect(thrown.hookId).toBe(failingHook);
+      expect(lifecycleSpy).toHaveBeenCalledTimes(1);
+      expect(lifecycle.persistCompletion).toHaveBeenCalledTimes(1);
+      expect(step).toHaveBeenCalledTimes(1);
+      expect(httpEvents().map((event) => event.hookType)).toEqual(
+        failingHook === 'onComplete' ? ['onComplete'] : ['onComplete', 'onError'],
+      );
+      expect(
+        httpEvents().every((event) => event.reason === status && event.status === status),
+      ).toBe(true);
+      expect(writes).toHaveLength(1);
+      expect(writes[0]).toMatchObject({ status, stepCount: 2, usage });
+      expect(writes[0].error).toEqual(status === 'error' ? businessError : undefined);
+      expect(coordinator.saveAgentState).not.toHaveBeenCalled();
+      expect(
+        (service as any).streamManager.publishStreamEvent.mock.calls.some(
+          ([, event]: [string, { type: string }]) => event.type === 'error',
+        ),
+      ).toBe(false);
+      if (status === 'error')
+        for (const event of httpEvents()) expect(event.errorDetail).toEqual(businessError);
+    },
+  );
+
+  it('preserves the same intervention persistence error and parked state through both real catch blocks', async () => {
+    const state = makeState();
+    state.host.hooks = state.host.hooks.filter(
+      (hook) => hook.type === 'onComplete' || hook.type === 'onError',
+    );
+    const { service, coordinator, step, newState } = setup(state);
+    const parkedState = { ...newState, status: 'waiting_for_human' };
+    step.mockResolvedValue({ events: [], newState: parkedState, nextContext: undefined });
+    const writes = observeStateWrites(coordinator);
+    const lifecycle = (service as any).completionLifecycle;
+    const error = new CriticalAgentInterventionPersistenceError(
+      operationId,
+      new Error('Review store unavailable'),
+    );
+    vi.spyOn(lifecycle, 'notifyPendingAgentIntervention').mockRejectedValue(error);
+    const lifecycleSpy = vi.spyOn(lifecycle, 'dispatchHooks');
+    await expect(execute(service)).rejects.toBe(error);
+    await expect(lifecycleSpy.mock.results[0].value).rejects.toBe(error);
+    expect(lifecycleSpy).toHaveBeenCalledTimes(1);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ status: 'waiting_for_human' });
+    expect(writes[0].error).toBeUndefined();
+    expect(coordinator.saveAgentState).not.toHaveBeenCalled();
+    expect(httpEvents()).toEqual([]);
     expect(
-      coordinator.saveAgentState.mock.calls.every(([, saved]: any[]) => saved.status !== 'error'),
-    ).toBe(true);
+      (service as any).streamManager.publishStreamEvent.mock.calls.some(
+        ([, event]: [string, { type: string }]) => event.type === 'error',
+      ),
+    ).toBe(false);
   });
 });
