@@ -8,6 +8,8 @@ Latest owner reconciliation: [owner-regression-checkpoint.md](owner-regression-c
 
 Latest product supplement: [cold-card-checkpoint.md](cold-card-checkpoint.md). Cold B and fresh B→C reapproval/device execution were observed; an expired-source recovery path lost hooks and remains a reported failure.
 
+Complete fixed implementation checks: [fixed-integration-checkpoint.md](fixed-integration-checkpoint.md), all 84 diff paths covered in two explicit commands; 1301 and 357 tests passed respectively, lint clean, full types still failed with identical base/current diagnostics.
+
 ## Files and finishing criteria
 
 - `plan.json`: 31 stable user-outcome criteria, using Acceptance's existing `plan[]` schema. No test/lint/type gate masquerades as acceptance.
