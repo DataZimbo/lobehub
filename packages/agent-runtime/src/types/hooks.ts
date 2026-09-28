@@ -6,6 +6,9 @@ import type {
 } from '@lobechat/types';
 
 import type { ToolRunResult } from '../transport/tool';
+import type { CompactHookContext } from './compactHooks';
+
+export type { CompactHookContext } from './compactHooks';
 
 /**
  * Agent Runtime Hook Types
@@ -226,7 +229,7 @@ export interface ToolCallErrorHookEvent extends ToolCallHookContext {
   error: string;
 }
 
-export interface BeforeCompactHookEvent {
+export interface BeforeCompactHookEvent extends CompactHookContext {
   messageCount: number;
   operationId: string;
   stepIndex: number;
@@ -234,7 +237,7 @@ export interface BeforeCompactHookEvent {
   userId?: string;
 }
 
-export interface AfterCompactHookEvent {
+export interface AfterCompactHookEvent extends CompactHookContext {
   groupId: string;
   messagesAfter: number;
   messagesBefore: number;
@@ -244,7 +247,7 @@ export interface AfterCompactHookEvent {
   userId?: string;
 }
 
-export interface CompactErrorHookEvent {
+export interface CompactErrorHookEvent extends CompactHookContext {
   error: string;
   operationId: string;
   stepIndex: number;
