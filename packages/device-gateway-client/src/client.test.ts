@@ -801,6 +801,35 @@ describe('GatewayClient', () => {
       expect(await abandonThenReplace(true)).toEqual({ replaced: false, status: 'reconnecting' });
     });
 
+    it('lets one abandoned socket excuse only one takeover', async () => {
+      const racingClient = new GatewayClient({
+        autoReconnect: true,
+        gatewayUrl: 'https://gateway.test.com',
+        token: 'tok',
+      });
+      const replacedCb = vi.fn();
+      racingClient.on('replaced', replacedCb);
+
+      mockWsShouldHang = true;
+      racingClient.connect();
+      await vi.advanceTimersByTimeAsync(1);
+      (racingClient as any).forceReconnect('stalled'); // abandons A1 mid-handshake
+      mockWsShouldHang = false;
+      await vi.advanceTimersByTimeAsync(1_001);
+
+      // A1 lands late and knocks off A2: our own socket, so reconnect.
+      (racingClient as any).handleClose(1000, Buffer.from('Replaced by new connection'));
+      expect(replacedCb).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1_001);
+
+      // Still inside the window, a real second client replaces A3: stay down.
+      (racingClient as any).handleClose(1000, Buffer.from('Replaced by new connection'));
+      expect(replacedCb).toHaveBeenCalledTimes(1);
+      expect(racingClient.connectionStatus).toBe('disconnected');
+
+      racingClient.disconnect();
+    });
+
     it('sizes the self-takeover window by the configured connect timeout', async () => {
       // A 40s handshake budget: an upgrade abandoned 20s ago can still land.
       expect(

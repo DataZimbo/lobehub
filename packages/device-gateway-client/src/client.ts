@@ -124,13 +124,14 @@ export class GatewayClient extends EventEmitter {
   >();
   private intentionalDisconnect = false;
   /**
-   * When a socket was last abandoned while its handshake was still in flight.
-   * Only such a socket can reach the gateway after its successor and knock it
-   * off with the takeover reason: an opened socket was registered before the
-   * successor existed. The handshake is bounded by `connectTimeoutMs`, so past
-   * that an in-flight upgrade is gone and any takeover is another client.
+   * When each socket abandoned mid-handshake was abandoned. Only such a socket
+   * can reach the gateway after its successor and knock it off with the
+   * takeover reason: an opened socket was registered before the successor
+   * existed. Each can do that at most once, and only within `connectTimeoutMs`
+   * (the handshake budget), so a takeover consumes one live entry and anything
+   * beyond them is another client.
    */
-  private lastInFlightAbandonAt = 0;
+  private inFlightAbandons: number[] = [];
   private deviceId: string;
   private connectionId: string;
   private channel?: string;
@@ -507,7 +508,7 @@ export class GatewayClient extends EventEmitter {
     if (
       !this.intentionalDisconnect &&
       reason.toString() === REPLACED_CLOSE_REASON &&
-      Date.now() - this.lastInFlightAbandonAt > this.connectTimeoutMs
+      !this.consumeInFlightAbandon()
     ) {
       // Another client holding our connectionId just took over. Reconnecting
       // would knock it off in turn: the two would trade the connection every
@@ -531,6 +532,13 @@ export class GatewayClient extends EventEmitter {
       this.emit('disconnected');
     }
   };
+
+  /** Attribute a takeover to one of our own late sockets, if one can still land. */
+  private consumeInFlightAbandon(): boolean {
+    const now = Date.now();
+    this.inFlightAbandons = this.inFlightAbandons.filter((at) => now - at <= this.connectTimeoutMs);
+    return this.inFlightAbandons.shift() !== undefined;
+  }
 
   private handleError = (error: Error) => {
     this.logger.error('WebSocket error:', error.message);
@@ -659,7 +667,7 @@ export class GatewayClient extends EventEmitter {
       return;
     }
     const ws = this.ws;
-    if (ws.readyState === WebSocket.CONNECTING) this.lastInFlightAbandonAt = Date.now();
+    if (ws.readyState === WebSocket.CONNECTING) this.inFlightAbandons.push(Date.now());
     const suppressCloseError = (error: Error) => {
       this.logger.debug(`Ignoring WebSocket error during close: ${error.message}`);
     };
