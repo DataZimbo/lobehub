@@ -5,7 +5,7 @@
  * Hook registration, webhook delivery, and serialization types are server-specific.
  */
 
-import type { AgentHookEvent, AgentHookType } from '@lobechat/agent-runtime';
+import type { AgentHookEvent, AgentHookType, AnyHookEvent } from '@lobechat/agent-runtime';
 import type { AgentHookWebhookConfig, SerializedAgentHook } from '@lobechat/types';
 
 export type {
@@ -29,6 +29,10 @@ export type {
 
 // ── Server-side Hook Types ───────────────────────────────
 
+/** Outgoing projection, enriched with the final userId's available email. */
+export type AgentHookWebhookPayload = Partial<AnyHookEvent> &
+  Record<string, unknown> & { userEmail?: string };
+
 /**
  * Webhook delivery configuration for production mode.
  *
@@ -40,7 +44,7 @@ export type {
  */
 export interface AgentHookWebhook extends Omit<AgentHookWebhookConfig, 'eventFields'> {
   /** Event fields to include in the webhook payload. Defaults to all serializable event fields. */
-  eventFields?: (keyof AgentHookEvent)[];
+  eventFields?: (keyof AgentHookEvent | 'userEmail')[];
 
   /**
    * Behavior when QStash delivery fails (publish error or missing

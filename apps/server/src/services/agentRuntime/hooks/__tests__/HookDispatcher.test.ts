@@ -3,6 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deliverWebhook, HookDispatcher } from '../HookDispatcher';
 import type { AgentHook, AgentHookEvent } from '../types';
 
+vi.mock('@/database/models/user', () => ({
+  UserModel: { getEmailsByIds: async () => [] },
+}));
+vi.mock('@/database/server', () => ({ getServerDB: async () => ({}) }));
+
 // Mock isQueueAgentRuntimeEnabled to control local vs production mode
 vi.mock('@/server/services/queue/impls', () => ({
   isQueueAgentRuntimeEnabled: vi.fn(function () {
