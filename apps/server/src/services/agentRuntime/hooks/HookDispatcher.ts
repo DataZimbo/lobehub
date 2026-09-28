@@ -66,6 +66,14 @@ function buildWebhookPayload(event: AnyHookEvent, eventFields?: string[]): Recor
  *   delivered via HTTP POST or QStash
  */
 export class HookDispatcher {
+  /** Continuations retain local callbacks when present and validated durable webhooks otherwise. */
+  getContinuationHooks(operationId: string, serializedHooks?: SerializedAgentHook[]): AgentHook[] {
+    // The schema's cross-field refinements enforce AgentHook's discriminated
+    // control/notification union; Zod's inferred object type cannot express it.
+    return (
+      this.hooks.get(operationId) ?? (parseSerializedHooks(serializedHooks ?? []) as AgentHook[])
+    );
+  }
   /**
    * In-memory hook store (local mode)
    * Maps operationId → AgentHook[]
@@ -148,7 +156,11 @@ export class HookDispatcher {
     signal?: AbortSignal,
   ): Promise<ToolCallPreparation> {
     const originalArgs = structuredClone(event.originalArgs ?? event.args);
-    const ready: ToolCallPreparation = { originalArgs, status: 'ready' };
+    const ready: ToolCallPreparation = {
+      originalArgs,
+      additionalContexts: [],
+      status: 'ready',
+    };
     const restored = serializedHooks ? parseSerializedHooks(serializedHooks) : undefined;
     const hooks = isQueueAgentRuntimeEnabled()
       ? (restored ?? this.getSerializedHooks(operationId) ?? [])
@@ -165,6 +177,8 @@ export class HookDispatcher {
         hook.webhook,
         {
           ...event,
+          args: structuredClone(ready.effectiveArgs ?? originalArgs),
+          originalArgs: structuredClone(originalArgs),
           hookId: hook.id,
           hookType: 'beforeToolCall',
         },
@@ -172,27 +186,34 @@ export class HookDispatcher {
       );
       if (signal?.aborted || response.status === 'cancelled')
         return { originalArgs, status: 'cancelled' };
-      // C1 supports decisions only. C2 removes this guard when input/context are integrated.
-      const unsupported =
-        response.status === 'success' &&
-        (response.decision?.updatedInput !== undefined ||
-          response.decision?.additionalContext !== undefined);
-      if (response.status === 'error' || unsupported) {
+      if (response.status === 'error') {
         if (resolveToolCallHookErrorPolicy(hook.webhook.onError).action === 'block') {
           return {
-            originalArgs,
+            ...ready,
             status: 'blocked',
-            reason: unsupported ? 'unsupported_control_response' : 'hook_control_error',
+            reason: 'hook_control_error',
           };
         }
         continue;
       }
+      if (response.decision?.additionalContext !== undefined) {
+        ready.additionalContexts = ready.additionalContexts!.filter(
+          ({ hookId }) => hookId !== hook.id,
+        );
+        ready.additionalContexts.push({
+          hookId: hook.id,
+          text: response.decision.additionalContext,
+        });
+      }
       if (response.decision?.permissionDecision === 'deny') {
         return {
-          originalArgs,
+          ...ready,
           status: 'blocked',
           reason: response.decision.permissionDecisionReason ?? 'Blocked by beforeToolCall hook.',
         };
+      }
+      if (response.decision?.permissionDecision === 'allow' && response.decision.updatedInput) {
+        ready.effectiveArgs = structuredClone(response.decision.updatedInput);
       }
     }
     return signal?.aborted ? { originalArgs, status: 'cancelled' } : ready;

@@ -17,6 +17,14 @@ import { ServerToolTransport } from './ServerToolTransport';
 const { fetchHook, queueMode } = vi.hoisted(() => ({ fetchHook: vi.fn(), queueMode: vi.fn() }));
 vi.mock('@lobechat/ssrf-safe-fetch', () => ({ ssrfSafeFetch: fetchHook }));
 vi.mock('@/server/services/queue/impls', () => ({ isQueueAgentRuntimeEnabled: queueMode }));
+vi.mock('../redis', () => ({
+  getAgentRuntimeRedisClient: () => ({ duplicate: () => ({ disconnect: vi.fn() }) }),
+}));
+vi.mock('../ToolResultWaiter', () => ({
+  ToolResultWaiter: class {
+    waitForResult = async () => ({ content: 'client executed', success: true });
+  },
+}));
 vi.mock('@/libs/qstash', () => ({ OtelQstashClient: class {} }));
 vi.mock('@/database/models/agent', () => ({
   AgentModel: class {
@@ -90,6 +98,7 @@ function setup(hooks: AgentHook[], signal?: AbortSignal, restore = false) {
     host: { hooks: JSON.parse(JSON.stringify(registered.getSerializedHooks('op') ?? [])) },
     userInterventionConfig: { approvalMode: 'auto-run' },
   };
+  const streamManager = {} as RuntimeExecutorContext['streamManager'];
   const transport = new ServerToolTransport({
     operationId: 'op',
     stepIndex: 1,
@@ -97,7 +106,7 @@ function setup(hooks: AgentHook[], signal?: AbortSignal, restore = false) {
     hookDispatcher: dispatcher,
     abortSignal: signal,
     serverDB: {},
-    streamManager: {},
+    streamManager,
     toolExecutionService: { executeTool: execute },
   } as unknown as RuntimeExecutorContext);
   const host: AgentRuntimeHost = {
@@ -106,12 +115,33 @@ function setup(hooks: AgentHook[], signal?: AbortSignal, restore = false) {
       tools: transport,
       messages: {
         createToolMessage: vi.fn(async (row) => {
-          rows.push(row);
-          return { ...row, id: `row-${rows.length}` };
+          const saved = { ...row, id: `row-${rows.length + 1}` };
+          rows.push(saved);
+          return saved;
         }),
         query: vi.fn(async () => rows),
-        updateToolMessage: vi.fn(),
-        updateToolIntervention: vi.fn(),
+        updateToolCall: vi.fn(async (id, args, preparation) => {
+          const row = rows.find((row) => row.id === id);
+          if (row) {
+            row.plugin = { ...(row.plugin as object), arguments: args };
+            row.pluginState = {
+              ...(row.pluginState as object),
+              hookPreparation: structuredClone(preparation),
+            };
+          }
+        }),
+        updateToolMessage: vi.fn(async (id, params) => {
+          const row = rows.find((row) => row.id === id);
+          if (row)
+            Object.assign(row, params, {
+              pluginState: { ...(row.pluginState as object), ...params.pluginState },
+            });
+        }),
+        updateToolIntervention: vi.fn(async (id, intervention) => {
+          const row = rows.find((row) => row.id === id);
+          if (row) row.pluginIntervention = intervention;
+        }),
+        deleteMessage: vi.fn(),
         update: vi.fn(),
         findToolMessageIdByToolCallId: vi.fn(),
       } as unknown as AgentRuntimeHost['transports']['messages'],
@@ -128,7 +158,7 @@ function setup(hooks: AgentHook[], signal?: AbortSignal, restore = false) {
       phase: 'llm_result',
       payload: { hasToolsCalling: true, parentMessageId: 'assistant', toolsCalling: calls },
     });
-  return { dispatcher, execute, executors, host, rows, runtime, state, step };
+  return { dispatcher, execute, executors, host, rows, runtime, state, step, streamManager };
 }
 
 beforeEach(() => {
@@ -163,7 +193,7 @@ describe('beforeToolCall control pipeline', () => {
       expect(mock).not.toHaveBeenCalled();
       expect(fixture.rows).toEqual([
         expect.objectContaining({
-          pluginState: { reason: 'hook_denied', type: 'blocked' },
+          pluginState: expect.objectContaining({ reason: 'hook_denied', type: 'blocked' }),
           tool_call_id: 'native-1',
         }),
       ]);
@@ -353,7 +383,7 @@ describe('beforeToolCall control pipeline', () => {
   });
 
   it.each(['updatedInput', 'additionalContext'] as const)(
-    'routes unsupported %s through onError',
+    'applies supported %s even with onError block',
     async (field) => {
       fetchHook.mockImplementation(
         async () =>
@@ -369,12 +399,13 @@ describe('beforeToolCall control pipeline', () => {
       );
       const blocked = setup([control('block', 'block')]);
       await blocked.step();
-      expect(blocked.execute).not.toHaveBeenCalled();
-      expect(blocked.rows[0].content).toBe('unsupported_control_response');
+      expect(blocked.execute).toHaveBeenCalledTimes(1);
       const continued = setup([control()]);
       await continued.step();
       expect(continued.execute).toHaveBeenCalledTimes(1);
-      expect(continued.execute.mock.calls[0][0].arguments).toBe('{"path":"a"}');
+      expect(continued.execute.mock.calls[0][0].arguments).toBe(
+        field === 'updatedInput' ? '{"path":"b"}' : '{"path":"a"}',
+      );
     },
   );
 
@@ -390,7 +421,7 @@ describe('beforeToolCall control pipeline', () => {
       payload: { approvedToolCall: call(), parentMessageId: 'assistant' },
     });
     expect(fixture.execute).not.toHaveBeenCalled();
-    expect(fixture.rows[0].pluginState).toEqual({ reason: 'hook_denied', type: 'blocked' });
+    expect(fixture.rows[0].pluginState).toMatchObject({ reason: 'hook_denied', type: 'blocked' });
   });
   it.each(['single', 'batch'] as const)(
     'does not forward a denied client tool in %s mode',
@@ -416,7 +447,7 @@ describe('beforeToolCall control pipeline', () => {
             );
       expect(fixture.execute).not.toHaveBeenCalled();
       expect(result.newState.status).toBe('running');
-      expect(fixture.rows[0].pluginState).toEqual({ reason: 'hook_denied', type: 'blocked' });
+      expect(fixture.rows[0].pluginState).toMatchObject({ reason: 'hook_denied', type: 'blocked' });
     },
   );
 
@@ -489,7 +520,9 @@ describe('beforeToolCall control pipeline', () => {
     expect(fixture.rows).toHaveLength(0);
     expect(fixture.host.transports.messages.updateToolMessage).toHaveBeenCalledWith(
       'pending-tool-row',
-      expect.objectContaining({ pluginState: { reason: 'hook_denied', type: 'blocked' } }),
+      expect.objectContaining({
+        pluginState: expect.objectContaining({ reason: 'hook_denied', type: 'blocked' }),
+      }),
     );
     expect(fixture.host.transports.messages.updateToolIntervention).toHaveBeenCalledWith(
       'pending-tool-row',
@@ -497,4 +530,449 @@ describe('beforeToolCall control pipeline', () => {
     );
     expect(result.events).toContainEqual(expect.objectContaining({ type: 'tool_result' }));
   });
+  it('replaces inputs serially before permission, card and execution, retaining the original snapshot', async () => {
+    const inputs: Record<string, unknown>[] = [];
+    fetchHook.mockImplementation(async (_url, init) => {
+      const input = JSON.parse(init.body);
+      inputs.push(input);
+      return new Response(
+        JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: 'beforeToolCall',
+            permissionDecision: 'allow',
+            updatedInput: { path: input.args.path + '/changed' },
+            additionalContext: 'tool guidance',
+          },
+        }),
+      );
+    });
+    const fixture = setup([control('one'), control('two')]);
+    fixture.state.userInterventionConfig = { approvalMode: 'manual' };
+    const parked = await fixture.step();
+    expect(parked.newState.status).toBe('waiting_for_human');
+    expect(inputs.map((input) => input.args)).toEqual([{ path: 'a' }, { path: 'a/changed' }]);
+    expect(inputs.map((input) => input.originalArgs)).toEqual([{ path: 'a' }, { path: 'a' }]);
+    expect(fixture.rows[0]).toMatchObject({
+      plugin: { arguments: '{"path":"a/changed/changed"}' },
+      pluginState: {
+        hookPreparation: {
+          originalArgs: { path: 'a' },
+          additionalContexts: [
+            { hookId: 'one', text: 'tool guidance' },
+            { hookId: 'two', text: 'tool guidance' },
+          ],
+        },
+      },
+    });
+    const approved = parked.newState.pendingToolsCalling![0];
+    const resumed = await fixture.runtime.step(
+      { ...parked.newState, status: 'running' },
+      {
+        phase: 'human_approved_tool',
+        payload: {
+          approvedToolCall: structuredClone(approved),
+          parentMessageId: 'row-1',
+          skipCreateToolMessage: true,
+        },
+      },
+    );
+    expect(inputs.slice(2).map((input) => input.args)).toEqual([
+      { path: 'a' },
+      { path: 'a/changed' },
+    ]);
+    expect(fixture.execute).toHaveBeenCalledTimes(1);
+    expect(fixture.execute.mock.calls[0][0].arguments).toBe('{"path":"a/changed/changed"}');
+    expect(resumed.newState.status).toBe('running');
+    expect(fixture.rows).toHaveLength(1);
+  });
+
+  it.each(['single', 'batch'] as const)(
+    'invalidates changed approval from durable rows after worker replacement: %s',
+    async (mode) => {
+      let suffix = '/old';
+      const originalInputs: unknown[] = [];
+      fetchHook.mockImplementation(async (_url, init) => {
+        const input = JSON.parse(init.body);
+        originalInputs.push(input.args);
+        return new Response(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: 'beforeToolCall',
+              permissionDecision: 'allow',
+              updatedInput: { path: input.args.path + suffix },
+            },
+          }),
+        );
+      });
+      const fixture = setup([control()]);
+      fixture.state.userInterventionConfig = { approvalMode: 'manual' };
+      const parked = await fixture.step();
+      const approved = structuredClone(parked.newState.pendingToolsCalling![0]);
+      suffix = '/new';
+      // New continuation has no per-operation preparation cache.
+      const state = {
+        ...fixture.state,
+        toolPreparations: undefined,
+        toolPreparationParentId: undefined,
+      };
+      const result = await fixture.runtime.step(state, {
+        phase: 'human_approved_tool',
+        payload:
+          mode === 'single'
+            ? { approvedToolCall: approved, parentMessageId: 'row-1', skipCreateToolMessage: true }
+            : {
+                approvedToolCalls: [approved],
+                parentMessageId: 'assistant',
+                toolMessageIds: { 'native-1': 'row-1' },
+              },
+      });
+      expect(fixture.execute).not.toHaveBeenCalled();
+      expect(result.newState.status).toBe('waiting_for_human');
+      expect(originalInputs).toEqual([{ path: 'a' }, { path: 'a' }]);
+      expect(fixture.rows).toHaveLength(1);
+      expect(fixture.rows[0]).toMatchObject({
+        plugin: { arguments: '{"path":"a/new"}' },
+        pluginIntervention: { status: 'pending' },
+      });
+      expect(result.newState.pendingToolsCalling?.[0].arguments).toBe('{"path":"a/new"}');
+    },
+  );
+  it('uses rewritten resource keys before batch serializeBy planning', async () => {
+    fetchHook.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: 'beforeToolCall',
+              permissionDecision: 'allow',
+              updatedInput: { path: 'shared' },
+            },
+          }),
+        ),
+    );
+    const fixture = setup([control()]);
+    fixture.state.toolManifestMap = {
+      fs: { identifier: 'fs', api: [{ name: 'write', serializeBy: 'path' }] },
+    } as AgentState['toolManifestMap'];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fixture.execute.mockImplementationOnce(async () => {
+      await gate;
+      return { content: 'one', success: true };
+    });
+    const pending = fixture.step([
+      call('one'),
+      { ...call('two'), arguments: '{"path":"different"}' },
+    ]);
+    await vi.waitFor(() => expect(fixture.execute).toHaveBeenCalledTimes(1));
+    expect(fetchHook).toHaveBeenCalledTimes(2);
+    expect(fixture.execute.mock.calls[0][0].arguments).toBe('{"path":"shared"}');
+    release();
+    await pending;
+    expect(fixture.execute).toHaveBeenCalledTimes(2);
+    expect(fixture.execute.mock.calls[1][0].arguments).toBe('{"path":"shared"}');
+  });
+
+  it('feeds rewritten args to real global permission audits and before/after events', async () => {
+    fetchHook.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: 'beforeToolCall',
+              permissionDecision: 'allow',
+              updatedInput: { path: 'sensitive' },
+            },
+          }),
+        ),
+    );
+    const fixture = setup([control()]);
+    const audit = vi.fn(async (args) => args.path === 'sensitive');
+    const runtime = new AgentRuntime(
+      new GeneralChatAgent({
+        operationId: 'op',
+        globalInterventionAudits: [{ type: 'path', resolver: audit, policy: 'always' }],
+      }),
+      {
+        executors: fixture.executors,
+        prepareTools: createToolPreparation(fixture.host),
+      },
+    );
+    const result = await runtime.step(fixture.state, {
+      phase: 'llm_result',
+      payload: { hasToolsCalling: true, parentMessageId: 'assistant', toolsCalling: [call()] },
+    });
+    expect(audit.mock.calls[0][0]).toEqual({ path: 'sensitive' });
+    expect(result.newState.status).toBe('waiting_for_human');
+    expect(fixture.execute).not.toHaveBeenCalled();
+    expect(fixture.rows[0]).toMatchObject({ plugin: { arguments: '{"path":"sensitive"}' } });
+  });
+
+  it('keeps unchanged approved siblings executing while changed members repark', async () => {
+    let changed = false;
+    fetchHook.mockImplementation(async (_url, init) => {
+      const input = JSON.parse(init.body);
+      return new Response(
+        JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: 'beforeToolCall',
+            permissionDecision: 'allow',
+            updatedInput: { path: changed && input.toolCallId === 'two' ? 'new' : 'old' },
+          },
+        }),
+      );
+    });
+    const fixture = setup([control()]);
+    fixture.state.userInterventionConfig = { approvalMode: 'manual' };
+    const parked = await fixture.step([call('one'), call('two')]);
+    changed = true;
+    const result = await fixture.runtime.step(
+      { ...parked.newState, status: 'running' },
+      {
+        phase: 'human_approved_tool',
+        payload: {
+          approvedToolCalls: structuredClone(parked.newState.pendingToolsCalling),
+          parentMessageId: 'assistant',
+          toolMessageIds: { one: 'row-1', two: 'row-2' },
+        },
+      },
+    );
+    expect(fixture.execute).toHaveBeenCalledTimes(1);
+    expect(fixture.execute.mock.calls[0][0].id).toBe('one');
+    expect(result.newState.status).toBe('waiting_for_human');
+    expect(result.newState.pendingToolsCalling?.map(({ id }) => id)).toEqual(['two']);
+    expect(fixture.rows).toHaveLength(2);
+  });
+  it('does not turn a persisted rewrite into approval when the worker dies before repark', async () => {
+    const fixture = setup([control()]);
+    fixture.state.userInterventionConfig = { approvalMode: 'manual' };
+    await fixture.step();
+    fixture.rows[0].pluginIntervention = { status: 'approved', approvedArguments: '{"path":"a"}' };
+    const input = {
+      approvedToolCall: { ...call(), arguments: '{"path":"rewritten"}' },
+      parentMessageId: 'row-1',
+      skipCreateToolMessage: true,
+    };
+    // Simulate the atomic preparation write surviving a process exit before
+    // request_human_approve can publish the new card.
+    fixture.rows[0].plugin = { ...call(), arguments: '{"path":"rewritten"}' };
+    fixture.rows[0].pluginState = {
+      hookPreparation: {
+        originalArgs: { path: 'a' },
+        effectiveArgs: { path: 'rewritten' },
+        approvalArgs: { path: 'a' },
+        status: 'ready',
+      },
+    };
+    fetchHook.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: 'beforeToolCall',
+              permissionDecision: 'allow',
+              updatedInput: { path: 'rewritten' },
+            },
+          }),
+        ),
+    );
+    const result = await fixture.runtime.step(fixture.state, {
+      phase: 'human_approved_tool',
+      payload: input,
+    });
+    expect(result.newState.status).toBe('waiting_for_human');
+    expect(fixture.execute).not.toHaveBeenCalled();
+    expect(fixture.rows).toHaveLength(1);
+  });
+
+  it('reparks an invalidated partial approval together with all unresolved siblings', async () => {
+    const fixture = setup([control()]);
+    fixture.state.userInterventionConfig = { approvalMode: 'manual' };
+    const parked = await fixture.step([call('one'), call('two')]);
+    fixture.rows[0].pluginIntervention = {
+      ...(fixture.rows[0].pluginIntervention as object),
+      status: 'approved',
+      approvedArguments: '{"path":"a"}',
+    };
+    fetchHook.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: 'beforeToolCall',
+              permissionDecision: 'allow',
+              updatedInput: { path: 'new' },
+            },
+          }),
+        ),
+    );
+    fixture.host.operation.stepIndex = 2;
+    const result = await fixture.runtime.step(
+      { ...parked.newState, status: 'running' },
+      {
+        phase: 'human_approved_tool',
+        payload: {
+          approvedToolCall: call('one'),
+          parentMessageId: 'row-1',
+          skipCreateToolMessage: true,
+        },
+      },
+    );
+    expect(result.newState.status).toBe('waiting_for_human');
+    expect(result.newState.pendingToolsCalling?.map(({ id }) => id)).toEqual(['one', 'two']);
+    expect(result.newState.pendingApprovalBatch?.supersedes).toMatchObject({
+      reapprovedToolCallIds: ['one'],
+      toolCallIds: ['one', 'two'],
+    });
+    expect(fixture.rows).toHaveLength(2);
+    expect(fixture.execute).not.toHaveBeenCalled();
+  });
+
+  it('never rewrites the caller context retained by a local step retry', async () => {
+    const fixture = setup([control()]);
+    fetchHook.mockImplementation(async (_url, init) => {
+      const request = JSON.parse(init.body);
+      return new Response(
+        JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: 'beforeToolCall',
+            permissionDecision: 'allow',
+            updatedInput: { path: request.args.path + '/suffix' },
+          },
+        }),
+      );
+    });
+    const context = {
+      phase: 'llm_result' as const,
+      payload: { hasToolsCalling: true, parentMessageId: 'assistant', toolsCalling: [call()] },
+    };
+    await fixture.runtime.step(fixture.state, context);
+    await fixture.runtime.step(fixture.state, context);
+    expect(context.payload.toolsCalling[0].arguments).toBe('{"path":"a"}');
+    expect(fixture.execute.mock.calls.map(([tool]) => tool.arguments)).toEqual([
+      '{"path":"a/suffix"}',
+      '{"path":"a/suffix"}',
+    ]);
+  });
+  it.each(['server', 'client', 'error'] as const)(
+    'uses one rewritten input at the real transport and notification boundary: %s',
+    async (target) => {
+      fetchHook.mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              hookSpecificOutput: {
+                hookEventName: 'beforeToolCall',
+                permissionDecision: 'allow',
+                updatedInput: { path: 'effective' },
+              },
+            }),
+          ),
+      );
+      const before = vi.fn();
+      const after = vi.fn();
+      const error = vi.fn();
+      const fixture = setup([
+        control(),
+        { id: 'observe', type: 'beforeToolCall', handler: before },
+        { id: 'after', type: 'afterToolCall', handler: after },
+        { id: 'error', type: 'onToolCallError', handler: error },
+      ]);
+      const send = vi.fn();
+      fixture.streamManager.sendToolExecute = send;
+      if (target === 'error') fixture.execute.mockRejectedValue(new Error('execution failed'));
+      if (target === 'server')
+        fixture.execute.mockResolvedValueOnce({
+          content: 'retry',
+          success: false,
+          error: { kind: 'retry' },
+        });
+      await fixture.step([{ ...call(), executor: target === 'client' ? 'client' : 'server' }]);
+      const expected = {
+        args: { path: 'effective' },
+        originalArgs: { path: 'a' },
+        toolCallId: 'native-1',
+      };
+      expect(before).toHaveBeenCalledWith(expect.objectContaining(expected));
+      await vi.waitFor(() =>
+        expect(target === 'error' ? error : after).toHaveBeenCalledWith(
+          expect.objectContaining(expected),
+        ),
+      );
+      expect(fetchHook).toHaveBeenCalledTimes(1);
+      if (target !== 'error')
+        expect(fixture.rows[0]).toMatchObject({
+          plugin: { arguments: '{"path":"effective"}' },
+          pluginState: {
+            hookPreparation: { originalArgs: { path: 'a' }, effectiveArgs: { path: 'effective' } },
+          },
+        });
+      if (target === 'client') {
+        expect(send).toHaveBeenCalledWith(
+          'op',
+          expect.objectContaining({ arguments: '{"path":"effective"}', toolCallId: 'native-1' }),
+        );
+        expect(fixture.execute).not.toHaveBeenCalled();
+      } else {
+        expect(fixture.execute).toHaveBeenCalledTimes(target === 'server' ? 2 : 1);
+        for (const [payload] of fixture.execute.mock.calls)
+          expect(payload.arguments).toBe('{"path":"effective"}');
+      }
+    },
+  );
+  it.each(['client', 'deferred'] as const)(
+    'persists preparation before an async %s handoff',
+    async (target) => {
+      fetchHook.mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              hookSpecificOutput: {
+                hookEventName: 'beforeToolCall',
+                permissionDecision: 'allow',
+                updatedInput: { path: 'effective' },
+                additionalContext: 'remember after callback',
+              },
+            }),
+          ),
+      );
+      const fixture = setup([control()]);
+      if (target === 'client') fixture.state.toolSourceMap = { fs: 'client' };
+      else
+        fixture.execute.mockImplementation(async () => {
+          fixture.rows.push({
+            id: 'deferred-row',
+            role: 'tool',
+            parentId: 'assistant',
+            tool_call_id: 'native-1',
+            plugin: call(),
+          });
+          return {
+            content: '',
+            success: true,
+            deferred: true,
+            state: { toolMessageId: 'deferred-row' },
+          };
+        });
+      const result = await fixture.step();
+      expect(result.newState.status).toBe('waiting_for_async_tool');
+      expect(fixture.rows).toHaveLength(1);
+      expect(fixture.rows[0]).toMatchObject({
+        plugin: { arguments: '{"path":"effective"}' },
+        pluginState: {
+          hookPreparation: {
+            originalArgs: { path: 'a' },
+            additionalContexts: [{ hookId: 'control', text: 'remember after callback' }],
+          },
+        },
+      });
+      expect(fixture.host.transports.stream.publishChunk).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolMessageIds: { 'native-1': target === 'client' ? 'row-1' : 'deferred-row' },
+        }),
+      );
+    },
+  );
 });

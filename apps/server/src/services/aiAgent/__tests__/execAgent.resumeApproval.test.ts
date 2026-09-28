@@ -7,6 +7,7 @@ import {
   deriveAgentInterventionContinuationOperationId,
   deriveAgentInterventionQueueDeduplicationId,
 } from '@/business/server/agent-run/agentInterventionIdentity';
+import { hookDispatcher } from '@/server/services/agentRuntime/hooks';
 
 import { AiAgentService } from '../index';
 
@@ -277,6 +278,69 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
     prompt: '',
   };
 
+  it('retains source hooks and groups mixed decision notifications only on the durable continuation', async () => {
+    mockFindById.mockImplementation(async (id: string) => ({
+      ...pendingToolMessage,
+      id,
+      parentId: 'assistant-source',
+    }));
+    mockFindMessagePlugin.mockImplementation(async (id: string) => ({
+      ...pendingToolPlugin,
+      toolCallId: `call-${id}`,
+      intervention: { status: 'pending', operationId: 'op-parked' },
+    }));
+    const hooks = [
+      {
+        id: 'after-human',
+        type: 'afterHumanIntervention',
+        webhook: { url: 'https://hooks.example/after' },
+      },
+    ];
+    mockLoadInterventionContinuationState.mockResolvedValue({
+      origin: { agentId: 'agent-1', topicId: 'topic-1' },
+      host: { hooks },
+    });
+    mockFindOperationById.mockResolvedValue({ status: 'waiting_for_human' });
+    await service.execAgent({
+      ...baseParams,
+      resumeApprovals: [
+        { decision: 'approved', parentMessageId: 'tool-msg-1', toolCallId: 'call-tool-msg-1' },
+        { decision: 'approved', parentMessageId: 'tool-msg-2', toolCallId: 'call-tool-msg-2' },
+        {
+          decision: 'rejected',
+          parentMessageId: 'tool-msg-3',
+          toolCallId: 'call-tool-msg-3',
+          rejectionReason: 'no',
+        },
+        {
+          decision: 'rejected_continue',
+          parentMessageId: 'tool-msg-4',
+          toolCallId: 'call-tool-msg-4',
+          rejectionReason: 'later',
+        },
+      ],
+    });
+    const created = mockCreateOperation.mock.calls[0][0];
+    expect(created.hooks).toEqual(hooks);
+    expect(created.interventionHookEvents).toEqual([
+      expect.objectContaining({
+        operationId: 'op-parked',
+        action: 'approve',
+        toolCallIds: ['call-tool-msg-1', 'call-tool-msg-2'],
+      }),
+      expect.objectContaining({
+        action: 'reject',
+        rejectionReason: 'no',
+        toolCallIds: ['call-tool-msg-3'],
+      }),
+      expect.objectContaining({
+        action: 'rejectAndContinue',
+        rejectionReason: 'later',
+        toolCallIds: ['call-tool-msg-4'],
+      }),
+    ]);
+  });
+
   describe('decision=approved', () => {
     it('persists intervention=approved and seeds initialContext for human_approved_tool', async () => {
       await service.execAgent({
@@ -505,6 +569,7 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
   });
 
   it('restores the claimed rows when preparation fails before the continuation starts', async () => {
+    const dispatch = vi.spyOn(hookDispatcher, 'dispatch');
     mockMessageQuery.mockRejectedValueOnce(new Error('history unavailable'));
 
     await expect(
@@ -517,6 +582,8 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
         },
       }),
     ).rejects.toThrow('history unavailable');
+    expect(dispatch).not.toHaveBeenCalled();
+    dispatch.mockRestore();
 
     const claimedResolutionRequestId = mockResolveHumanApproval.mock.calls[0][0][0].intervention
       .resolutionRequestId as string;
@@ -576,7 +643,8 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
     );
   });
 
-  it('marks a reused ready continuation as a normal runtime', async () => {
+  it('marks a reused ready continuation as a normal runtime without recreating notifications', async () => {
+    const dispatch = vi.spyOn(hookDispatcher, 'dispatch');
     const approvalResolutionRequestId = '018fbd8e-7baf-7c6d-8000-000000000099';
     const identity = { resolutionRequestId: approvalResolutionRequestId, userId: 'user-1' };
     const continuationOperationId = deriveAgentInterventionContinuationOperationId(identity);
@@ -639,6 +707,8 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
     });
 
     expect(mockEnsureInterventionContinuationStarted).toHaveBeenCalledWith(continuationOperationId);
+    expect(dispatch).not.toHaveBeenCalled();
+    dispatch.mockRestore();
     expect(mockCreateOperation).not.toHaveBeenCalled();
   });
 
@@ -1129,7 +1199,7 @@ describe('AiAgentService.stopPendingApproval', () => {
       status: 'waiting_for_human',
       topicId: 'topic-1',
     });
-    mockRecordCompletion.mockResolvedValue(undefined);
+    mockRecordCompletion.mockResolvedValue(true);
     mockInterruptOperation.mockResolvedValue(true);
     service = new AiAgentService({} as unknown as LobeChatDatabase, 'user-1');
   });
@@ -1166,6 +1236,79 @@ describe('AiAgentService.stopPendingApproval', () => {
       expect.objectContaining({ completionReason: 'interrupted', status: 'interrupted' }),
     );
     expect(result.settledToolMessageIds).toEqual(['tool-msg-1', 'tool-msg-2']);
+  });
+
+  it('notifies the complete native stop set after persistence and skips deterministic replay', async () => {
+    const resolutionRequestId = 'stop-resolution';
+    let stopped = false;
+    const notify = vi.fn(async (_event: unknown) => {
+      expect(stopped).toBe(true);
+    });
+    hookDispatcher.register('op-parked-1', [
+      { id: 'stop', type: 'onStopByHumanIntervention', handler: notify },
+    ]);
+    mockLoadInterventionContinuationState.mockResolvedValue({ origin: { agentId: 'agent-1' } });
+    mockResolveHumanApproval.mockResolvedValue('applied');
+    mockFindMessagePlugin.mockImplementation(async (id: string) => ({
+      toolCallId: `native-${id}`,
+      intervention: {
+        operationId: 'op-parked-1',
+        batchId: 'batch-1',
+        status: stopped ? 'aborted' : 'pending',
+        resolutionRequestId,
+      },
+    }));
+    mockFindOperationById.mockImplementation(async () => ({
+      id: 'op-parked-1',
+      topicId: 'topic-1',
+      status: stopped ? 'interrupted' : 'waiting_for_human',
+    }));
+    mockRecordCompletion.mockImplementation(async () => {
+      stopped = true;
+      return true;
+    });
+    const params = {
+      approvalResolutionRequestId: resolutionRequestId,
+      batchId: 'batch-1',
+      operationId: 'op-parked-1',
+      toolMessageIds: ['tool-msg-1', 'tool-msg-2'],
+      topicId: 'topic-1',
+    };
+    try {
+      await service.stopPendingApproval(params);
+      await service.stopPendingApproval(params);
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect(notify.mock.calls[0][0]).toMatchObject({
+        toolCallIds: ['native-tool-msg-1', 'native-tool-msg-2'],
+        reason: 'user_stop',
+      });
+    } finally {
+      hookDispatcher.unregister('op-parked-1');
+    }
+  });
+
+  it('does not notify a stop that the runtime failed to acknowledge', async () => {
+    const notify = vi.fn();
+    hookDispatcher.register('op-parked-1', [
+      { id: 'stop', type: 'onStopByHumanIntervention', handler: notify },
+    ]);
+    mockLoadInterventionContinuationState.mockResolvedValue({ origin: {} });
+    mockResolveHumanApproval.mockResolvedValue('applied');
+    mockInterruptOperation.mockResolvedValue(false);
+    try {
+      await expect(
+        service.stopPendingApproval({
+          batchId: 'batch-1',
+          operationId: 'op-parked-1',
+          toolMessageIds: ['tool-msg-1', 'tool-msg-2'],
+          topicId: 'topic-1',
+        }),
+      ).rejects.toThrow('not acknowledged');
+      expect(notify).not.toHaveBeenCalled();
+      expect(mockRecordCompletion).not.toHaveBeenCalled();
+    } finally {
+      hookDispatcher.unregister('op-parked-1');
+    }
   });
 
   it('stamps the generic resolution id on every stopped row', async () => {

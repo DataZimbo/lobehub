@@ -1304,6 +1304,12 @@ export class AgentRuntimeService {
       operationCreated = true;
 
       // Save initial state
+      if (params.interventionHookEvents?.length) {
+        initialState.host = {
+          ...initialState.host,
+          interventionHookEvents: params.interventionHookEvents,
+        };
+      }
       await this.coordinator.saveAgentState(operationId, initialState as any);
 
       // Register external hooks
@@ -1796,6 +1802,22 @@ export class AgentRuntimeService {
 
         if (!agentState) {
           throw new Error(`Agent state not found for operation ${operationId}`);
+        }
+
+        // Only a durably prepared continuation reaches this step lock. Claim
+        // and rollback never publish success; repeated queue/reuse deliveries
+        // see the drained ledger. HTTP delivery remains at-least-once on crash.
+        if (agentState.host?.interventionHookEvents?.length) {
+          for (const event of agentState.host.interventionHookEvents) {
+            await hookDispatcher.dispatch(
+              operationId,
+              'afterHumanIntervention',
+              event,
+              agentState.host.hooks,
+            );
+          }
+          agentState.host.interventionHookEvents = [];
+          await this.coordinator.saveAgentState(operationId, agentState);
         }
 
         // A parked approval step is already durable before its generic Review

@@ -15,6 +15,9 @@ import { AgentRuntimeService } from '../AgentRuntimeService';
 import { hookDispatcher } from '../hooks';
 import type { AgentHookEvent } from '../hooks/types';
 
+const { hookFetch } = vi.hoisted(() => ({ hookFetch: vi.fn() }));
+vi.mock('@lobechat/ssrf-safe-fetch', () => ({ ssrfSafeFetch: hookFetch }));
+
 // ── Mocks ──────────────────────────────────────────
 vi.mock('@/envs/app', () => ({ appEnv: { APP_URL: 'http://localhost:3010' } }));
 vi.mock('@/database/models/message', () => ({
@@ -410,5 +413,64 @@ describe('Hooks integration — afterStep event is compatible with renderStepPro
     expect('totalToolCalls' in event).toBe(true);
 
     dispatchSpy.mockRestore();
+  });
+});
+
+describe('durable approval resolution notifications', () => {
+  it('drains persisted events once under the worker step lock, including a replacement worker', async () => {
+    vi.restoreAllMocks();
+    hookFetch.mockReset().mockResolvedValue(new Response('{}'));
+    const event = {
+      operationId: 'source',
+      action: 'approve' as const,
+      toolCallIds: ['native-1', 'native-2'],
+    };
+    let stored: any = {
+      operationId: 'continuation',
+      status: 'running',
+      stepCount: 1,
+      createdAt: '',
+      lastModified: '',
+      messages: [],
+      host: {
+        hooks: [
+          {
+            id: 'approval',
+            type: 'afterHumanIntervention',
+            webhook: { url: 'https://hooks.example/approval' },
+          },
+        ],
+        interventionHookEvents: [event],
+      },
+    };
+    const worker = () => {
+      const service = new AgentRuntimeService({} as any, 'user-1', { queueService: null });
+      const coordinator = (service as any).coordinator;
+      coordinator.loadAgentState.mockImplementation(async () => structuredClone(stored));
+      coordinator.saveAgentState.mockImplementation(async (_op: string, state: any) => {
+        stored = structuredClone(state);
+      });
+      // stepCount already exceeds this delivery: only the durable hook ledger
+      // can be drained; the stale step cannot execute tools/LLM again.
+      return service;
+    };
+    await worker().executeStep({
+      operationId: 'continuation',
+      stepIndex: 0,
+      context: { phase: 'user_input' } as any,
+    });
+    expect(hookFetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(hookFetch.mock.calls[0][1].body)).toMatchObject({
+      action: 'approve',
+      toolCallIds: ['native-1', 'native-2'],
+      operationId: 'source',
+    });
+    expect(stored.host.interventionHookEvents).toEqual([]);
+    await worker().executeStep({
+      operationId: 'continuation',
+      stepIndex: 0,
+      context: { phase: 'user_input' } as any,
+    });
+    expect(hookFetch).toHaveBeenCalledTimes(1);
   });
 });
