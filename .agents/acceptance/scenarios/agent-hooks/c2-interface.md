@@ -1,6 +1,6 @@
 # C2 submitted interface — awaiting integrated product verification
 
-Source: C2 `834963412a25506add4cb8de4721d4dc17957f57`, draft PR20134, base `4905628f8e1a0e849f1f2711a365b86ed769c829`. D integrated it without conflicts into `a471e3876a3ecd25cb233108754e1be3f0ac2cc3`, retaining S/K/L and C1/H/F/T ancestry. D reran the affected three TypeScript paths: 210 tests passed / lint clean. Full type diagnostics remain 1444 on both D base/current, byte-identical; this is not a type pass. Evidence: `.acceptances/hooks-d-notification-r2/assets/`.
+Source: C2 `cde2ebce24983de0ff10d623992b131d7b22383a`, draft PR20134, base `4905628f8e1a0e849f1f2711a365b86ed769c829`. D integrated it without conflicts into `50001f8b7e50743c1daa2df35a7b6fa2e90131df`, retaining S/K/L and C1/H/F/T ancestry. The earlier notification-boundary delta at 83496341 changed runtime behavior; the cde2ebce supplement changes only documentation and assertions. See `overlay-contract-checkpoint.md` for its D check. For the earlier delta D reran the affected three TypeScript paths: 210 tests passed / lint clean. Full type diagnostics remain 1444 on both D base/current, byte-identical; this is not a type pass. Evidence: `.acceptances/hooks-d-notification-r2/assets/`.
 
 Earlier C2's 646-test clean-type result belongs to its own environment. D's earlier 1103-test check and product observations retain integration `858b2d45` provenance. See `notification-checkpoint.md` for the affected delivery supplement; real Cloud approval/card and model-dependent gaps remain open.
 

@@ -1,6 +1,6 @@
 # Agent Runtime HTTP hooks — unpublished integration draft
 
-This draft describes integration base `a471e3876a3ecd25cb233108754e1be3f0ac2cc3` (C2 + S + K + L). It is not release documentation. The implementation accepts allow/deny, full input replacement and additional context; the temporary control guard has been removed.
+This draft describes integration base `50001f8b7e50743c1daa2df35a7b6fa2e90131df` (C2 + S + K + L). It is not release documentation. The implementation accepts allow/deny, full input replacement and additional context; the temporary control guard has been removed.
 
 Actual HTTP/device checks are in progress. D observed a mismatch between rewritten tool arguments and the Web approval card, and the available Cloud checkout currently fails to compile against the integrated OSS tree. Approval/card claims below are intended contract pending correction and verification. Real model inference and managed QStash delivery also lack test credentials. Do not interpret this draft as acceptance or publish it as verified guidance.
 
