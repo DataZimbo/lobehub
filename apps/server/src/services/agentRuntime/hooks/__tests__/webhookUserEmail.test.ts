@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { HookDispatcher } from '../HookDispatcher';
+import { HookDispatcher, hookDispatcher } from '../HookDispatcher';
 import type { AgentHookEvent, AgentHookType, SerializedHook } from '../types';
 import { createWebhookPayloadBuilder } from '../webhookPayload';
 
@@ -286,110 +286,199 @@ describe('webhook user email', () => {
     expect(payload).toMatchObject({ args, originalArgs, userEmail: 'visitor@example.test' });
   });
 
-  it('pairs an internal callback owner with its email from the persisted operation', async () => {
-    operationOwner.mockResolvedValue({ userId: 'owner' });
-    await dispatcher.dispatch('run', 'onComplete', event, [
-      { id: 'external', type: 'onComplete', webhook: { url } },
-      { id: 'internal', type: 'onComplete', webhook: { url, body: { userId: 'owner' } } },
-    ]);
+  it('pairs the internal callback owner with email from per-delivery context', async () => {
+    await dispatcher.dispatch(
+      'run',
+      'onComplete',
+      event,
+      [
+        { id: 'external', type: 'onComplete', webhook: { url } },
+        { id: 'internal', type: 'onComplete', webhook: { url, body: { userId: 'owner' } } },
+      ],
+      { ownerUserId: 'owner' },
+    );
     expect(received.map(({ userId, userEmail }) => ({ userId, userEmail }))).toEqual([
       { userId: 'visitor', userEmail: 'visitor@example.test' },
       { userId: 'owner', userEmail: 'owner@example.test' },
     ]);
+    expect(received.every((payload) => !('ownerUserId' in payload))).toBe(true);
     expect(event.userId).toBe('visitor');
+    expect(operationOwner).not.toHaveBeenCalled();
   });
 
-  it('uses the producer operation id even if the webhook body overrides it', async () => {
-    operationOwner.mockImplementation(async ({ where }) => {
-      const operationId = where({ id: 'id-column' }, { eq: (_column: string, id: string) => id });
-      return { userId: operationId === 'run' ? 'owner' : 'unrelated' };
-    });
+  it('does not authorize body identity or operation data without explicit context', async () => {
+    operationOwner.mockResolvedValue({ userId: 'owner' });
     await dispatcher.dispatch('run', 'onComplete', event, [
       {
         id: 'spoof',
         type: 'onComplete',
-        webhook: { url, body: { operationId: 'other-run', userId: 'unrelated' } },
+        webhook: { url, body: { operationId: 'run', userId: 'owner', ownerUserId: 'owner' } },
       },
     ]);
     expect(received[0]).not.toHaveProperty('userEmail');
-    expect(operationOwner).toHaveBeenCalledTimes(1);
+    expect(operationOwner).not.toHaveBeenCalled();
     expect(getEmailsByIds).not.toHaveBeenCalled();
   });
 
-  it('revalidates a persisted owner on a restored queue worker', async () => {
-    operationOwner.mockResolvedValue({ userId: 'owner' });
-    const hooks: SerializedHook[] = [
-      { id: 'internal', type: 'onComplete', webhook: { url, body: { userId: 'owner' } } },
-    ];
-    await dispatcher.dispatch('run', 'onComplete', event, hooks);
-    dispatcher = new HookDispatcher();
-    const serializedHooks = JSON.stringify(hooks);
-    await dispatcher.dispatch('run', 'onComplete', event, JSON.parse(serializedHooks));
-    expect(received[1]).toMatchObject({ userId: 'owner', userEmail: 'owner@example.test' });
-    expect(operationOwner).toHaveBeenCalledTimes(2);
-  });
+  it.each(['consecutive', 'concurrent'] as const)(
+    'isolates owners and visitors on the global dispatcher across %s deliveries',
+    async (mode) => {
+      const deliver = (suffix: string) => {
+        const visitor = `${mode}-visitor-${suffix}`;
+        const owner = `${mode}-owner-${suffix}`;
+        return hookDispatcher.dispatch(
+          `run-${suffix}`,
+          'onComplete',
+          {
+            ...event,
+            operationId: `run-${suffix}`,
+            userId: visitor,
+          },
+          [
+            { id: 'external', type: 'onComplete', webhook: { url } },
+            { id: 'internal', type: 'onComplete', webhook: { url, body: { userId: owner } } },
+          ],
+          { ownerUserId: owner },
+        );
+      };
+      if (mode === 'concurrent') {
+        let started!: () => void;
+        let release!: () => void;
+        const firstLookup = new Promise<void>((resolve) => {
+          started = resolve;
+        });
+        const resume = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        getEmailsByIds.mockImplementation(async (_db, ids: string[]) => {
+          if (ids[0] === `${mode}-visitor-a`) {
+            started();
+            await resume;
+          }
+          return ids.map((id) => ({ id, email: `${id}@example.test` }));
+        });
+        const first = deliver('a');
+        await firstLookup;
+        try {
+          await deliver('b');
+        } finally {
+          release();
+        }
+        await first;
+      } else {
+        await deliver('a');
+        await deliver('b');
+      }
+      expect(received.map(({ userId, userEmail }) => ({ userId, userEmail }))).toEqual(
+        expect.arrayContaining(
+          ['visitor-a', 'owner-a', 'visitor-b', 'owner-b'].map((id) => ({
+            userId: `${mode}-${id}`,
+            userEmail: `${mode}-${id}@example.test`,
+          })),
+        ),
+      );
+      expect(received).toHaveLength(4);
+      // Previous owner and its cached email never authorize a later delivery.
+      for (const context of [undefined, { ownerUserId: `${mode}-owner-b` }]) {
+        await hookDispatcher.dispatch(
+          'run-b',
+          'onComplete',
+          event,
+          [
+            {
+              id: 'untrusted',
+              type: 'onComplete',
+              webhook: { url, body: { userId: `${mode}-owner-a` } },
+            },
+          ],
+          context,
+        );
+      }
+      expect(received.slice(4).every((payload) => !('userEmail' in payload))).toBe(true);
+      expect(getEmailsByIds).toHaveBeenCalledTimes(4);
+    },
+  );
 
-  it('keeps cached owners isolated across consecutive operations', async () => {
-    operationOwner
-      .mockResolvedValueOnce({ userId: 'owner-a' })
-      .mockResolvedValueOnce({ userId: 'owner-b' });
-    await dispatcher.dispatch('run', 'onComplete', event, [
-      { id: 'a', type: 'onComplete', webhook: { url, body: { userId: 'owner-a' } } },
+  it('requires fresh trusted context on a cold queue worker and every later dispatch', async () => {
+    vi.stubEnv('QSTASH_TOKEN', 'test-token');
+    const hooks: SerializedHook[] = [
+      {
+        id: 'internal',
+        type: 'onComplete',
+        webhook: { url, delivery: 'qstash', fallback: 'none', body: { userId: 'owner' } },
+      },
+    ];
+    const serializedHooks = JSON.stringify(hooks);
+    const restoredHooks: SerializedHook[] = JSON.parse(serializedHooks);
+    await dispatcher.dispatch('run', 'onComplete', event, hooks, { ownerUserId: 'owner' });
+    dispatcher = new HookDispatcher();
+    await dispatcher.dispatch('run', 'onComplete', event, restoredHooks);
+    await dispatcher.dispatch('run', 'onComplete', event, restoredHooks, { ownerUserId: 'owner' });
+    await dispatcher.dispatch('run', 'onComplete', event, restoredHooks);
+    const bodies = publishJSON.mock.calls.map(([request]) => request.body);
+    expect(bodies.map(({ userEmail }) => userEmail)).toEqual([
+      'owner@example.test',
+      undefined,
+      'owner@example.test',
+      undefined,
     ]);
-    await dispatcher.dispatch('run-b', 'onComplete', { ...event, operationId: 'run-b' }, [
-      { id: 'b', type: 'onComplete', webhook: { url, body: { userId: 'owner-b' } } },
-    ]);
-    expect(received.map(({ userEmail }) => userEmail)).toEqual([
-      'owner-a@example.test',
-      'owner-b@example.test',
-    ]);
-    expect(operationOwner).toHaveBeenCalledTimes(2);
+    expect(bodies.every((payload) => !('ownerUserId' in payload))).toBe(true);
+    expect(JSON.stringify(hooks)).toBe(serializedHooks);
+    expect(getEmailsByIds).toHaveBeenCalledTimes(2);
   });
 
   it.each([{ rows: [] }, { rows: [{ id: 'owner', email: null }] }])(
     'omits unavailable owner email without substituting visitor email',
     async ({ rows }) => {
-      operationOwner.mockResolvedValue({ userId: 'owner' });
       getEmailsByIds.mockImplementation(async (_db, ids: string[]) =>
         ids[0] === 'visitor' ? [{ id: 'visitor', email: 'visitor@example.test' }] : rows,
       );
       await send();
-      await dispatcher.dispatch('run', 'onComplete', event, [
-        { id: 'internal', type: 'onComplete', webhook: { url, body: { userId: 'owner' } } },
-      ]);
+      await dispatcher.dispatch(
+        'run',
+        'onComplete',
+        event,
+        [{ id: 'internal', type: 'onComplete', webhook: { url, body: { userId: 'owner' } } }],
+        { ownerUserId: 'owner' },
+      );
       expect(received[1]).toHaveProperty('userId', 'owner');
       expect(received[1]).not.toHaveProperty('userEmail');
     },
   );
 
-  it('omits email on owner lookup failure without querying the requested account', async () => {
-    operationOwner.mockRejectedValue(new Error('lookup unavailable'));
+  it('omits owner email on lookup failure and continues delivery', async () => {
+    getEmailsByIds.mockRejectedValue(new Error('lookup unavailable'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    await dispatcher.dispatch('run', 'onComplete', event, [
-      { id: 'internal', type: 'onComplete', webhook: { url, body: { userId: 'owner' } } },
-    ]);
+    await dispatcher.dispatch(
+      'run',
+      'onComplete',
+      event,
+      [{ id: 'internal', type: 'onComplete', webhook: { url, body: { userId: 'owner' } } }],
+      { ownerUserId: 'owner' },
+    );
     expect(received[0]).not.toHaveProperty('userEmail');
-    expect(getEmailsByIds).not.toHaveBeenCalled();
   });
 
-  it('does not query an owner email after its waiter has timed out', async () => {
+  it('bounds explicit owner lookup without signal and cancels an independent waiter', async () => {
     vi.useFakeTimers();
-    let complete!: (value: { userId: string }) => void;
-    operationOwner.mockReturnValue(
-      new Promise((resolve) => {
-        complete = resolve;
-      }),
-    );
-    const pending = createWebhookPayloadBuilder()(
+    getEmailsByIds.mockReturnValue(new Promise(() => {}));
+    const build = createWebhookPayloadBuilder();
+    const controller = new AbortController();
+    const args = [
       event,
       { body: { userId: 'owner' } },
-      { hookId: 'internal', hookType: 'onComplete' },
-    );
+      { hookId: 'internal', hookType: 'onComplete' as const },
+    ] as const;
+    const pending = build(...args, { deliveryContext: { ownerUserId: 'owner' } });
+    const cancelled = build(...args, {
+      deliveryContext: { ownerUserId: 'owner' },
+      signal: controller.signal,
+    });
+    controller.abort();
+    expect(await cancelled).toBeUndefined();
     await vi.advanceTimersByTimeAsync(1000);
     expect(await pending).not.toHaveProperty('userEmail');
-    complete({ userId: 'owner' });
-    await vi.advanceTimersByTimeAsync(1);
-    expect(getEmailsByIds).not.toHaveBeenCalled();
+    expect(getEmailsByIds).toHaveBeenCalledTimes(1);
   });
 
   it('includes the resolved email in QStash JSON', async () => {

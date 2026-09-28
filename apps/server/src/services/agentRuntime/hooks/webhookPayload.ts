@@ -1,5 +1,6 @@
 import type { AgentHookType } from '@lobechat/agent-runtime';
 
+import type { HookDeliveryContext } from './deliveryContext';
 import type { AgentHookWebhook, AgentHookWebhookPayload } from './types';
 
 const EMAIL_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -16,22 +17,6 @@ const readUserEmail = async (userId: string): Promise<string | undefined> => {
     return users.find((user) => user.id === userId)?.email ?? undefined;
   } catch {
     console.error('[HookDispatcher] Failed to resolve webhook user email');
-    return undefined;
-  }
-};
-
-/** The producer operation id identifies the durable execution owner. */
-const readOperationOwner = async (operationId: string): Promise<string | undefined> => {
-  try {
-    const { getServerDB } = await import('@/database/server');
-    const db = await getServerDB();
-    const operation = await db.query.agentOperations.findFirst({
-      columns: { userId: true },
-      where: (table, { eq }) => eq(table.id, operationId),
-    });
-    return operation?.userId;
-  } catch {
-    console.error('[HookDispatcher] Failed to resolve webhook operation owner');
     return undefined;
   }
 };
@@ -76,13 +61,12 @@ const createCachedLookup = (read: (key: string) => Promise<string | undefined>) 
 
 export const createWebhookPayloadBuilder = () => {
   const resolveEmail = createCachedLookup(readUserEmail);
-  const resolveOwner = createCachedLookup(readOperationOwner);
 
-  return async <T extends { operationId?: string; userId?: string }>(
+  return async <T extends { userId?: string }>(
     event: T,
     webhook: Pick<AgentHookWebhook, 'body' | 'eventFields'>,
     metadata: { hookId: string; hookType: AgentHookType },
-    options: { signal?: AbortSignal } = {},
+    options: { deliveryContext?: HookDeliveryContext; signal?: AbortSignal } = {},
   ): Promise<AgentHookWebhookPayload | undefined> => {
     const { signal } = options;
     if (signal?.aborted) return undefined;
@@ -95,24 +79,16 @@ export const createWebhookPayloadBuilder = () => {
     }
     const payload: AgentHookWebhookPayload = { ...selected, ...metadata, ...body };
     delete payload.finalState;
-    // Identity comes from the producer or its durable operation, never webhook body alone.
+    // Authorize against this call's server context before reading even a cached email.
     delete payload.userEmail;
     const userId = 'userId' in payload ? payload.userId : event.userId;
     if (
       (!eventFields || eventFields.includes('userEmail')) &&
       typeof userId === 'string' &&
-      userId
+      userId &&
+      (userId === event.userId || userId === options.deliveryContext?.ownerUserId)
     ) {
-      const lookup = async () => {
-        if (userId !== event.userId) {
-          if (!event.operationId) return undefined;
-          const ownerId = await resolveOwner(event.operationId);
-          if (ownerId !== userId || signal?.aborted) return undefined;
-        }
-        return resolveEmail(userId);
-      };
-      // One deadline covers owner validation and email lookup together.
-      const email = await waitForEmail(lookup(), signal);
+      const email = await waitForEmail(resolveEmail(userId), signal);
       if (signal?.aborted) return undefined;
       if (email !== undefined) payload.userEmail = email;
     }

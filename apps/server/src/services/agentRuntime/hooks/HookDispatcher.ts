@@ -6,6 +6,7 @@ import urlJoin from 'url-join';
 import { OtelQstashClient } from '@/libs/qstash';
 import { isQueueAgentRuntimeEnabled } from '@/server/services/queue/impls';
 
+import type { HookDeliveryContext } from './deliveryContext';
 import type {
   AgentHook,
   AgentHookEvent,
@@ -122,6 +123,8 @@ export class HookDispatcher {
      * runtime-precise {@link SerializedHook} once the type / webhook are checked.
      */
     serializedHooks?: SerializedAgentHook[],
+    /** Trusted runtime owner for this call; not persisted with hook configuration. */
+    deliveryContext?: HookDeliveryContext,
   ): Promise<void> {
     const isQueueMode = isQueueAgentRuntimeEnabled();
 
@@ -157,10 +160,12 @@ export class HookDispatcher {
             hook.id,
             hook.webhook.url,
           );
-          const webhookPayload = await this.buildWebhookPayload(event, hook.webhook, {
-            hookId: hook.id,
-            hookType: type,
-          });
+          const webhookPayload = await this.buildWebhookPayload(
+            event,
+            hook.webhook,
+            { hookId: hook.id, hookType: type },
+            { deliveryContext },
+          );
           if (webhookPayload) await deliverWebhook(hook.webhook, webhookPayload);
         } catch (error) {
           if (hook.webhook.fallback === 'none') {
