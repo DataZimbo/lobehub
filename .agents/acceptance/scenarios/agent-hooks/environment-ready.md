@@ -37,13 +37,10 @@ In separate owned terminals, use the same environment:
 bun run dev
 ```
 
-Start QStash from its isolated cache outside the repo's package-manager context:
+Start the D-owned QStash binary without invoking a package manager (see `dependency-incident.md` for provenance and verified installation boundaries):
 
 ```bash
-(
-  cd /tmp
-  ASDF_NODEJS_VERSION=24.21.0 pnpm --package=@upstash/qstash-cli@2.37.18 dlx qstash dev -port 58080
-)
+./.records/bin/hooks-d-qstash-2.37.18 dev -port 58080
 ```
 
 Then from D:

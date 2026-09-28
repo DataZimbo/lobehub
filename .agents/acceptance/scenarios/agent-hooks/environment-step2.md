@@ -60,11 +60,10 @@ S3 and app, separate terminals with the common environment:
 .agents/acceptance/scripts/init-dev-env.sh dev
 ```
 
-QStash, from a separate terminal; keep package installation outside the product workspace:
+QStash, from a separate terminal at D's root; this verified binary starts without package installation. See `dependency-incident.md` for source hash and installation/cache boundaries:
 
 ```bash
-cd /tmp
-ASDF_NODEJS_VERSION=24.21.0 pnpm --package=@upstash/qstash-cli@2.37.18 dlx qstash dev -port 58080
+./.records/bin/hooks-d-qstash-2.37.18 dev -port 58080
 ```
 
 Each gateway in a separate terminal, from D's worktree:
