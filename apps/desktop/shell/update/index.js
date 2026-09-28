@@ -1,11 +1,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, nativeTheme, net } = require('electron');
 
 const { configureUpdater, resolveChannel, resolveFeedUrl } = require('../rescue');
 
 const ACTION = 'shell:update-action';
 const STATE = 'shell:update-state';
+const SHOW_DELAY = 600;
 
 // This runs in the synchronous shell boot chain, before Core creates its settings file.
 function createStartupUpdate({ userData }) {
@@ -22,12 +23,12 @@ function createStartupUpdate({ userData }) {
   let approved = false;
   return {
     pending,
-    run: (check) => {
-      if (!pending) return Promise.resolve(true);
-      return runUpdateWindow({ check, reason: 'first-launch' }).then((ready) => {
-        approved = ready;
-        return ready;
-      });
+    run: async (check) => {
+      if (!pending) return true;
+      await app.whenReady();
+      // Offline first launch opens the app; Core's background check picks the update up later.
+      approved = !net.isOnline() || (await runUpdateWindow({ check, reason: 'first-launch' }));
+      return approved;
     },
     markHealthy: () => {
       if (!pending || !approved) return;
@@ -94,11 +95,24 @@ async function runUpdateWindow({ check, reason }) {
     event.preventDefault();
     quit();
   });
+  const finish = () => {
+    // Keep Electron alive across the gap before Core creates its first window.
+    app.once('window-all-closed', () => {});
+    allowClose = true;
+    settled(true);
+    if (!win.isDestroyed()) win.destroy();
+  };
   const fail = (error) => {
-    console.error('[shell:update] Update failed', error);
     installing = false;
     busy = false;
+    if (reason === 'first-launch' && !net.isOnline()) {
+      console.warn('[shell:update] Network lost, opening LobeHub', error);
+      finish();
+      return;
+    }
+    console.error('[shell:update] Update failed', error);
     update({ phase: 'error' });
+    focus();
   };
   const onDownload = ({ percent }) => update({ phase: 'downloading', percent });
   const onInstallError = (error) => {
@@ -112,11 +126,7 @@ async function runUpdateWindow({ check, reason }) {
       const outcome = await check(update);
       if (win.isDestroyed()) return;
       if (outcome === 'ready') {
-        // Keep Electron alive across the gap before Core creates its first window.
-        app.once('window-all-closed', () => {});
-        allowClose = true;
-        settled(true);
-        win.destroy();
+        finish();
       } else if (outcome === 'relaunch') {
         update({ phase: 'applying' });
         app.releaseSingleInstanceLock();
@@ -168,12 +178,14 @@ async function runUpdateWindow({ check, reason }) {
     }
     if (action === 'quit') quit();
   });
+  let showTimer;
   try {
     await win.loadFile(path.join(__dirname, 'index.html'));
-    win.show();
     void attempt();
+    showTimer = setTimeout(focus, reason === 'required' ? 0 : SHOW_DELAY);
     return await result;
   } finally {
+    clearTimeout(showTimer);
     app.removeListener('activate', focus);
     app.removeListener('second-instance', focus);
     ipcMain.removeHandler(ACTION);

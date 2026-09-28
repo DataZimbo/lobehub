@@ -45,6 +45,7 @@ const DOWNLOAD_TIMEOUT = 15 * 60 * 1000;
 const LOAD_PING_TIMEOUT = 3000;
 const MAX_BOOT_CRASHES = 2;
 const CHECK_INTERVAL = 60 * 60 * 1000;
+const NETWORK_POLL_INTERVAL = 15_000;
 const FIRST_CHECK_DELAY = Number(process.env['RENDERER_OTA_CHECK_DELAY']) || 0;
 const IDLE_APPLY_DELAY = 5 * 60 * 1000;
 const RENDERER_ROOT = 'dist/renderer';
@@ -96,6 +97,7 @@ export class CoreUpdateManager {
   private loadPingTimer: NodeJS.Timeout | null = null;
   private checkTimer: NodeJS.Timeout | null = null;
   private checkInterval: NodeJS.Timeout | null = null;
+  private networkInterval: NodeJS.Timeout | null = null;
   private idleTimer: NodeJS.Timeout | null = null;
   private gcTask: Promise<void> = Promise.resolve();
   private checkTask: Promise<void> = Promise.resolve();
@@ -466,6 +468,15 @@ export class CoreUpdateManager {
     this.checkInterval = setInterval(() => this.checkForUpdates(), CHECK_INTERVAL);
     this.checkTimer.unref?.();
     this.checkInterval.unref?.();
+    if (this.networkInterval) clearInterval(this.networkInterval);
+    let online = net.isOnline();
+    // ponytail: main process has no online event; polling is cheap and catches offline launches.
+    this.networkInterval = setInterval(() => {
+      const next = net.isOnline();
+      if (next && !online) this.checkForUpdates();
+      online = next;
+    }, NETWORK_POLL_INTERVAL);
+    this.networkInterval.unref?.();
   }
 
   private relaunchIntoCore() {

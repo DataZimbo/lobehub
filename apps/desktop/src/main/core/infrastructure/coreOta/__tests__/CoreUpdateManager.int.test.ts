@@ -53,7 +53,7 @@ const { electronMock, loggerMock } = vi.hoisted(() => ({
       releaseSingleInstanceLock: vi.fn(),
     },
     BrowserWindow: { getAllWindows: vi.fn(() => []) },
-    net: { fetch: vi.fn() },
+    net: { fetch: vi.fn(), isOnline: vi.fn(() => true) },
   },
   loggerMock: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }));
@@ -232,6 +232,30 @@ describe('CoreUpdateManager initialize', () => {
       await vi.advanceTimersByTimeAsync(60 * 60 * 1000 - 1);
       expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('checks again as soon as the network comes back', async () => {
+    vi.useFakeTimers();
+    electronMock.net.isOnline.mockReturnValue(false);
+    try {
+      const { manager } = await loadManager();
+      manager.startScheduledChecks();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+      electronMock.net.isOnline.mockReturnValue(true);
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally {
+      electronMock.net.isOnline.mockReturnValue(true);
       vi.useRealTimers();
     }
   });

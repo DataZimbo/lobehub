@@ -12,12 +12,14 @@ const electron = require.resolve('electron');
 const rescue = require.resolve('../rescue');
 const updaterPath = require.resolve('../rescue/electron-updater.cjs');
 let updater;
-let userData, window, handler, app, createStartupUpdate;
+let userData, window, handler, app, online, createStartupUpdate;
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const marker = () =>
   JSON.parse(fs.readFileSync(path.join(userData, 'startup-update.json'), 'utf8'));
 const action = (value) => handler({ sender: window.webContents }, value);
 beforeEach(() => {
+  window = undefined;
+  online = true;
   userData = fs.mkdtempSync(path.join(os.tmpdir(), 'startup-update-'));
   app = Object.assign(new EventEmitter(), {
     exit: vi.fn(),
@@ -47,7 +49,9 @@ beforeEach(() => {
       return this.destroyed;
     }
     async loadFile() {}
-    show() {}
+    show() {
+      this.shown = true;
+    }
     focus() {}
   }
   require.cache[electron] = {
@@ -55,6 +59,7 @@ beforeEach(() => {
       app,
       BrowserWindow: Window,
       nativeTheme: {},
+      net: { isOnline: () => online },
       ipcMain: {
         handle: (_channel, callback) => {
           handler = callback;
@@ -120,6 +125,7 @@ it('shows a recoverable error, ignores concurrent retries, and completes after a
   const result = createStartupUpdate({ userData }).run(check);
   await flush();
   expect(action('state')).toMatchObject({ phase: 'error', language: 'zh-CN' });
+  expect(window.shown).toBe(true);
   expect(marker().completed).toBe(false);
   action('retry');
   action('retry');
@@ -158,4 +164,53 @@ it('uses the full installer when required and leaves first launch pending until 
   action('quit');
   await result;
   expect(updater.listenerCount('download-progress')).toBe(0);
+});
+
+it('opens the app without a window when first launch starts offline', async () => {
+  online = false;
+  const gate = createStartupUpdate({ userData });
+  const check = vi.fn();
+  await expect(gate.run(check)).resolves.toBe(true);
+  expect(check).not.toHaveBeenCalled();
+  expect(window).toBeUndefined();
+  gate.markHealthy();
+  expect(marker().completed).toBe(true);
+});
+
+it('never shows the window when the check finishes quickly', async () => {
+  await expect(createStartupUpdate({ userData }).run(async () => 'ready')).resolves.toBe(true);
+  expect(window.shown).toBeUndefined();
+});
+
+it('shows the window only once the check outlasts the delay', async () => {
+  vi.useFakeTimers();
+  try {
+    let resume;
+    const result = createStartupUpdate({ userData }).run(
+      () =>
+        new Promise((resolve) => {
+          resume = resolve;
+        }),
+    );
+    await vi.advanceTimersByTimeAsync(599);
+    expect(window.shown).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(window.shown).toBe(true);
+    resume('ready');
+    await expect(result).resolves.toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('opens the app instead of an error when the network drops during the update', async () => {
+  const gate = createStartupUpdate({ userData });
+  const result = gate.run(async () => {
+    online = false;
+    throw new Error('net::ERR_INTERNET_DISCONNECTED');
+  });
+  await expect(result).resolves.toBe(true);
+  expect(window.isDestroyed()).toBe(true);
+  gate.markHealthy();
+  expect(marker().completed).toBe(true);
 });

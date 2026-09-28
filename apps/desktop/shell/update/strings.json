@@ -1,25 +1,21 @@
 {
   "en-US": {
-    "title": "Getting LobeHub ready",
     "requiredTitle": "Update required",
     "requiredDescription": "This update fixes important issues. Update to continue.",
-    "checking": "Checking for the latest version…",
-    "downloading": "Downloading update…",
-    "applying": "Applying update. Opening LobeHub soon…",
-    "error": "Unable to finish the update",
-    "errorDescription": "Check your connection and try again.",
+    "checking": "Checking for updates…",
+    "downloading": "Downloading update",
+    "applying": "Restarting LobeHub…",
+    "error": "Couldn’t finish the update",
     "retry": "Retry",
     "quit": "Quit"
   },
   "zh-CN": {
-    "title": "正在准备你的 LobeHub",
     "requiredTitle": "需要更新才能继续",
     "requiredDescription": "此更新修复了重要问题，请完成更新后继续使用。",
-    "checking": "正在检查最新版本…",
-    "downloading": "正在下载更新…",
-    "applying": "正在应用更新，即将为你打开…",
+    "checking": "正在检查更新…",
+    "downloading": "正在下载更新",
+    "applying": "正在重新打开 LobeHub…",
     "error": "暂时无法完成更新",
-    "errorDescription": "请检查网络连接后重试。",
     "retry": "重试",
     "quit": "退出"
   }

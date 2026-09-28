@@ -1,12 +1,10 @@
 export default {
-  'startupUpdate.title': 'Getting LobeHub ready',
   'startupUpdate.requiredTitle': 'Update required',
   'startupUpdate.requiredDescription': 'This update fixes important issues. Update to continue.',
-  'startupUpdate.checking': 'Checking for the latest version…',
-  'startupUpdate.downloading': 'Downloading update…',
-  'startupUpdate.applying': 'Applying update. Opening LobeHub soon…',
-  'startupUpdate.error': 'Unable to finish the update',
-  'startupUpdate.errorDescription': 'Check your connection and try again.',
+  'startupUpdate.checking': 'Checking for updates…',
+  'startupUpdate.downloading': 'Downloading update',
+  'startupUpdate.applying': 'Restarting LobeHub…',
+  'startupUpdate.error': 'Couldn’t finish the update',
   'startupUpdate.retry': 'Retry',
   'startupUpdate.quit': 'Quit',
 
