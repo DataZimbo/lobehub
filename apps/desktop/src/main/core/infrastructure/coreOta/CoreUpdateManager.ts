@@ -5,7 +5,12 @@ import path from 'node:path';
 import type { UpdateChannel } from '@lobechat/electron-client-ipc';
 import { app as electronApp, BrowserWindow, net } from 'electron';
 
-import { type ShellGlobal, shellInfo } from '@/const/shell';
+import {
+  type ShellGlobal,
+  shellInfo,
+  type StartupUpdateOutcome,
+  type StartupUpdateProgress,
+} from '@/const/shell';
 import {
   BUILD_CHANNEL,
   coerceStoredUpdateChannel,
@@ -81,6 +86,8 @@ export class CoreUpdateManager {
   private needsFullRelease = false;
   private unloadPrevented = false;
   private rollbackRendererDir: string | null = null;
+  private rendererVersion: string | null = null;
+  private rollbackRendererVersion: string | null = null;
   private pendingBootCheck = false;
   private coldBootCheck = false;
   private mountedSeen = false;
@@ -269,6 +276,8 @@ export class CoreUpdateManager {
       this.staged = null;
       return false;
     }
+    this.rollbackRendererVersion = this.rendererVersion;
+    this.rendererVersion = version;
     this.savePointer({ current: version, previous: this.pointer.current, staged: null });
     this.staged = null;
     this.clearIdleTimer();
@@ -285,16 +294,37 @@ export class CoreUpdateManager {
     lastCheckAt: this.lastCheckAt,
     lastError: this.lastError,
     needsFullRelease: this.needsFullRelease,
-    running: this.shell?.manifest?.version ?? null,
+    running: this.rendererVersion ?? this.shell?.manifest?.version ?? null,
     staged: this.staged?.version ?? null,
   });
 
   checkForUpdates = () => {
-    this.checkTask = this.checkTask.catch(() => {}).then(() => this.runCheck());
+    this.checkTask = this.checkTask
+      .catch(() => {})
+      .then(async () => {
+        await this.runCheck();
+      });
     return this.checkTask;
   };
 
-  private async runCheck() {
+  checkBeforeFirstLaunch = async (
+    update: (state: StartupUpdateProgress) => void,
+  ): Promise<StartupUpdateOutcome> => {
+    if (!this.enabled) throw new Error(`Core OTA unavailable: ${this.disabledReasons.join(', ')}`);
+    const outcome = await this.runCheck(update);
+    if (outcome === 'needs-full-release') return 'full-update';
+    if (outcome === 'staged') return 'relaunch';
+    if (
+      outcome === 'up-to-date' ||
+      outcome === 'already-current' ||
+      outcome === 'rollout-excluded'
+    ) {
+      return 'ready';
+    }
+    throw new Error(this.lastError || `Startup update check did not complete: ${outcome}`);
+  };
+
+  private async runCheck(startupProgress?: (state: StartupUpdateProgress) => void) {
     if (!this.enabled || this.busy || this.staged) {
       logger.info('Core OTA check skipped', {
         reason: !this.enabled ? 'disabled' : this.busy ? 'busy' : 'already-staged',
@@ -318,6 +348,7 @@ export class CoreUpdateManager {
       if (this.pointer.blacklist.includes(version)) throw new SkipCheck('blacklisted');
       if (!this.inRollout(version, remote.rollout)) throw new SkipCheck('rollout-excluded');
 
+      startupProgress?.({ phase: 'downloading' });
       await this.gcTask;
       const staged = await this.store.stage({
         builtin: { dir: this.shell!.builtinDir, manifest: this.builtinManifest! },
@@ -325,6 +356,10 @@ export class CoreUpdateManager {
           this.shell!.source === 'external'
             ? { dir: this.shell!.coreDir, manifest: this.running }
             : null,
+        onApplying: startupProgress ? () => startupProgress({ phase: 'applying' }) : undefined,
+        onDownloadProgress: startupProgress
+          ? (progress) => startupProgress({ phase: 'downloading', ...progress })
+          : undefined,
         objectsBaseUrl: remote.objectsBaseUrl,
         packsBaseUrl: feedUrl,
         remote,
@@ -340,17 +375,18 @@ export class CoreUpdateManager {
           : { staged: version },
       );
       this.lastError = null;
-      this.app.browserManager.broadcastToAllWindows('updateReady', {
-        kind: applyMode === 'relaunch' ? 'core-relaunch' : 'core-reload',
-        version,
-      });
+      if (!startupProgress)
+        this.app.browserManager.broadcastToAllWindows('updateReady', {
+          kind: applyMode === 'relaunch' ? 'core-relaunch' : 'core-reload',
+          version,
+        });
       this.gc();
-      if (applyMode === 'reload') this.handleWindowBlur();
+      if (!startupProgress && applyMode === 'reload') this.handleWindowBlur();
       outcome = 'staged';
     } catch (error) {
       if (error instanceof SkipCheck) {
         outcome = error.message;
-        return;
+        return outcome;
       }
       outcome = 'failed';
       this.lastError = error instanceof Error ? error.message : String(error);
@@ -362,6 +398,7 @@ export class CoreUpdateManager {
       if (generation === this.checkGeneration) this.busy = false;
       logger.info('Core OTA check finished', { channel: this.activeChannel, outcome });
     }
+    return outcome;
   }
 
   private async fetchRemote(feedUrl: string, generation: number): Promise<CoreManifest | null> {
@@ -461,6 +498,7 @@ export class CoreUpdateManager {
       return;
     }
     this.app.rendererUrlManager.setActiveRendererDir(this.rollbackRendererDir);
+    this.rendererVersion = this.rollbackRendererVersion;
     this.rollbackRendererDir = null;
     this.gc();
     this.reloadAllWindows();
