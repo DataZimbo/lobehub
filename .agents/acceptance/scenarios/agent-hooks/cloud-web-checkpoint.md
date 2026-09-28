@@ -12,6 +12,8 @@ The initial conversation request returned `message.getMessages` HTTP200, and gat
 
 Source inspection identifies a plausible boundary: `Conversation/store/slices/data/action.ts` drops SWR `onData` while the local runtime is running, before initializing messages; `resolveMessageListFeedback.ts` shows the skeleton while messages are uninitialized. Reconnect creates local running state. This is a source-backed explanation consistent with the observation, not an instrumented proof that this gate caused that specific request to be dropped, nor a base/current regression attribution.
 
+Subsequent [targeted diagnosis](pending-ui-diagnosis.md) reproduces that deferred-sync mechanism with actual Conversation/SWR code and the same fixture against exact pre-F/current source. It establishes an existing client synchronization boundary, while retaining the missing direct callback/body evidence for this historical live request. No r23 artifact or served SHA was changed.
+
 ## Real single-card flow
 
 Source `op_1790614789122_agt_gZf2QSTOMnA9_tpc_ETKn3lYqhuzJ_ZCNprh7l` was created by actual `execAgent` with explicitly seeded `llm_result`. Controls and the real Cloud adapter created pending Review and B tool preparation. The authenticated user clicked the actual conversation Submit button. The real source resolver and queue worker rechecked controls, produced C and reparked; the visible C permission card updated without a reload after Submit.
