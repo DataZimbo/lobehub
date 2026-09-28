@@ -1,5 +1,7 @@
 # Integrated execution checkpoint (not a final acceptance)
 
+Stop UI attribution update: C2's fixed base/current characterization confirms that stale pending cards after successful Stop and args-derived Edited/green-line summaries are pre-existing. They remain uncorrected and the complete Stop UI criterion is non-pass. See [stop-ui-attribution.md](stop-ui-attribution.md). This does not change historical evidence provenance or downgrade the current integration to the attribution's older SHA.
+
 Latest affected-path supplement: [cold-card-checkpoint.md](cold-card-checkpoint.md) records the repaired B projection and fresh B→C Web/device flow, plus a newly observed missing-source hooks failure. The r1 table below retains its original SHA and historical observations.
 
 Cloud-dependent blocked subcases and the minimal real entry are listed in [cloud-blocked-subcases.md](cloud-blocked-subcases.md). OSS evidence is retained separately; no generic token/UI pass is inferred from the compatibility fallback.
