@@ -668,6 +668,34 @@ describe('beforeToolCall control pipeline', () => {
       fixture.state.userInterventionConfig = { approvalMode: 'manual' };
       const parked = await fixture.step();
       const approved = structuredClone(parked.newState.pendingToolsCalling![0]);
+      const coldCard = () => {
+        const history = [
+          { id: 'user', role: 'user', content: 'write', createdAt: 0, updatedAt: 0 },
+          {
+            id: 'assistant',
+            parentId: 'user',
+            role: 'assistant',
+            content: '',
+            tools: [call()],
+            createdAt: 1,
+            updatedAt: 1,
+          },
+          ...structuredClone(fixture.rows).map((row) => ({ ...row, createdAt: 2, updatedAt: 2 })),
+        ] as UIChatMessage[];
+        return parse(history).flatList.find(({ role }) => role === 'assistantGroup')?.children?.[0]
+          .tools?.[0];
+      };
+      expect(coldCard()).toMatchObject({
+        id: 'native-1',
+        arguments: '{"path":"a/old"}',
+        result_msg_id: 'row-1',
+        intervention: { status: 'pending' },
+      });
+      fixture.rows[0].pluginIntervention = {
+        ...(fixture.rows[0].pluginIntervention as object),
+        status: 'approved',
+        approvedArguments: approved.arguments,
+      };
       suffix = '/new';
       // New continuation has no per-operation preparation cache.
       const state = {
@@ -695,6 +723,22 @@ describe('beforeToolCall control pipeline', () => {
         pluginIntervention: { status: 'pending' },
       });
       expect(result.newState.pendingToolsCalling?.[0].arguments).toBe('{"path":"a/new"}');
+      expect(coldCard()).toMatchObject({
+        id: 'native-1',
+        arguments: '{"path":"a/new"}',
+        result_msg_id: 'row-1',
+        intervention: { status: 'pending' },
+        result: {
+          state: {
+            hookPreparation: {
+              originalArgs: { path: 'a' },
+              effectiveArgs: { path: 'a/new' },
+              approvalArgs: { path: 'a/old' },
+            },
+          },
+        },
+      });
+      expect(approved.arguments).toBe('{"path":"a/old"}');
     },
   );
   it('uses rewritten resource keys before batch serializeBy planning', async () => {
