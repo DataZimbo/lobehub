@@ -17,10 +17,10 @@ const ChannelCard = memo<ChannelCardProps>(({ name, onCheckUpdate, onReconnect }
     <Flexbox horizontal align={'center'} justify={'space-between'}>
       <Text>{name}</Text>
       <Flexbox horizontal gap={8}>
-        {/* alint-expect */}
         <Button size={'small'} type={'primary'} onClick={onCheckUpdate}>
           {t('device.checkUpdate')}
         </Button>
+        {/* alint-expect */}
         <Button type={'primary'} onClick={onReconnect}>
           {t('device.reconnect')}
         </Button>

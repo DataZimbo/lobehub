@@ -84,19 +84,19 @@ About 14 input tokens per source line per rule. Two cold runs over the same file
 
 The `ui-*` rules encode the product owner's recurring acceptance rejections. They were distilled from 620 review comments on 92 acceptances over 30 days (2026-08-30 to 2026-09-29); each rule quotes the comments it comes from, so the standard stays the owner's words rather than a paraphrase. About half of those comments are requirement or taste calls no rule can hold; the rules cover the part that recurs and can be read off one file.
 
-| Rule                      | Where            | Sample precision | Whole repo | What it holds                                                                  |
-| ------------------------- | ---------------- | ---------------- | ---------- | ------------------------------------------------------------------------------ |
-| `ui-button-hierarchy`     | PR check         | \~85%            | 188        | one primary per surface; secondary `type="fill"`; utility `text`; default size |
-| `ui-lightweight-errors`   | PR check         | \~70%            | 73         | one readable error line, raw details folded                                    |
-| `ui-content-width`        | PR check (pages) | \~100%           | 7          | page bodies sit in `SettingContainer` or a max-width column                    |
-| `ui-edit-in-modal`        | PR check         | \~57%            | 24         | edit / rename / add opens a modal, not an inline input                         |
-| `ui-view-switch-tabs`     | PR check         | \~50%            | 20         | whole views switch with `Tabs`, the active tab in the URL                      |
-| `ui-no-decorative-chrome` | audit            | \~56%            | 1441       | no wrapper borders, fills, restating titles, bold labels, extra dividers       |
-| `ui-restrained-color`     | audit            | \~53%            | 830        | color for state only; gray metadata and types; tokens, not literals            |
-| `ui-user-facing-copy`     | audit            | \~53%            | 768        | no raw enums, hard-coded strings or jargon on screen                           |
-| `ui-in-app-links`         | audit            | \~60%            | 30         | links match the router's shapes and carry no marker params                     |
+| Rule                      | Where            | Sample precision | Whole repo | What it holds                                                                         |
+| ------------------------- | ---------------- | ---------------- | ---------- | ------------------------------------------------------------------------------------- |
+| `ui-button-hierarchy`     | PR check         | narrowed         | 62         | only two primaries in one group, a primary on every list row, a small empty-state CTA |
+| `ui-lightweight-errors`   | PR check         | \~70%            | 73         | one readable error line, raw details folded                                           |
+| `ui-content-width`        | PR check (pages) | \~100%           | 7          | page bodies sit in `SettingContainer` or a max-width column                           |
+| `ui-edit-in-modal`        | PR check         | ~57%             | 36         | edit / rename / add opens a modal, not an inline input or a popover input             |
+| `ui-view-switch-tabs`     | PR check         | \~50%            | 20         | whole views switch with `Tabs`, the active tab in the URL                             |
+| `ui-no-decorative-chrome` | audit            | \~56%            | 1441       | no wrapper borders, fills, restating titles, bold labels, extra dividers              |
+| `ui-restrained-color`     | audit            | \~53%            | 830        | color for state only; gray metadata and types; tokens, not literals                   |
+| `ui-user-facing-copy`     | audit            | \~53%            | 768        | no raw enums, hard-coded strings or jargon on screen                                  |
+| `ui-in-app-links`         | audit            | \~60%            | 30         | links match the router's shapes and carry no marker params                            |
 
-Sample precision is measured on the same 20-finding samples the carve-outs were written from, so it is optimistic. Rules with many findings or weak precision run only in the audit (`bun run alint:audit`, `alint.audit.toml`): reported on every PR they would drown the sharper rules, as `test-the-exit-not-the-entry` once did. `ui-in-app-links` cannot see the route table from one file; a test that matches literal in-app paths against the router is its real home. `text-transform: uppercase` is a deterministic check and lives in stylelint (`declaration-property-value-disallowed-list`, warning).
+`ui-button-hierarchy` was narrowed after review to three patterns a single file can decide; which action deserves the primary, and whether a secondary should be `fill`, is left to review. Sample precision is measured on the same 20-finding samples the carve-outs were written from, so it is optimistic. Rules with many findings or weak precision run only in the audit (`bun run alint:audit`, `alint.audit.toml`): reported on every PR they would drown the sharper rules, as `test-the-exit-not-the-entry` once did. `ui-in-app-links` cannot see the route table from one file; a test that matches literal in-app paths against the router is its real home. `text-transform: uppercase` is a deterministic check and lives in stylelint (`declaration-property-value-disallowed-list`, warning).
 
 ## Whole-repo calibration, 2026-09-29
 

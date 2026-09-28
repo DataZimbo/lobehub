@@ -5,22 +5,19 @@ You are reviewing one React component file from LobeHub's web client. Buttons co
 
 Team rule, distilled from the product owner's review rejections ("按钮用 filled 而不是 primary", "这个需要用轻量的 filled，不是 primary", "检查更新用文本按钮", "声明指标做成文本按钮", "按钮太小了，换成默认按钮大小", "默认用 small 不对吧，应该默认 default"): a button's visual weight must match how important the action is on its surface.
 
-- `type="primary"` is reserved for the ONE action that commits the surface's main task: submit / create / save / confirm in a form, modal or wizard footer, or the single main call to action of an empty state. Everything else is not primary.
-- A secondary action that should still read as a button (connect, retry, open, add, reconnect, an action inside a card or list row) uses `type="fill"` (or the default type) — never `type="primary"`.
-- A tertiary, inline or utility action (check for updates, declare a metric, refresh, view details, a link-like action next to text) is a text button: `type="text"`, or an `ActionIcon`.
-- Standalone action buttons use the default size. `size="small"` is only for buttons embedded in dense rows, table cells, toolbars or tags where the row itself is small.
-
-Report a button element (`Button`, `ActionIcon` with a label, or a button-like component) that violates this: `type="primary"` on an action that is not the surface's single commit action, two or more `type="primary"` buttons visible in the same surface, or `size="small"` on a standalone action button. Anchor on the line of the button's opening tag. In the message, name the action (from its label or handler) and why its weight is wrong. In the suggestion, give the `type` or `size` to use.
+Report ONLY these three patterns. They can be decided from this file alone; anything else about button weight is taste and is not this rule's job.
+1. Two or more `type="primary"` buttons rendered in the same action group — one footer, one toolbar, one row of actions — including a `danger` primary next to another primary. Anchor on the second one. Suggest keeping the primary on the commit action and making the other `type="default"`.
+2. A `type="primary"` button rendered once per item of a list — inside a `.map()` over rows, results, cards or options — so the list shows a column of primaries. Suggest `type="default"` (or `fill`) for the per-row action.
+3. `size="small"` on the single call to action of an empty state or a centered failure / retry state. Suggest the default size ("默认用 small 不对吧，应该默认 default").
+Anchor on the line of the button's opening tag. In the message, name the action (from its label or handler) and which pattern it matches.
 
 Do not report:
-- the one primary commit button of a form, modal, drawer or wizard, even if other buttons sit next to it;
-- `danger` buttons inside a destructive CONFIRMATION dialog (a danger + primary delete placed next to a primary save in a footer is still two primaries: report it);
-- icon-only `ActionIcon`s, which have their own sizing rules;
-- buttons whose type or size is a prop passed in by the caller (the caller decides);
-- small buttons inside table cells, list rows, tags, toolbars or popovers;
-- the single primary of a success / done screen or a share surface, and an empty state with exactly one primary;
-- small `type="text"` buttons inline in a section title, or passed as a label or header `extra`;
-- buttons in graph / canvas node headers and in notification list items.
+- any single primary button that is not in a list row, whatever its label — deciding which action deserves the primary needs the product context;
+- a secondary button that is `default`, `fill`, `text` or `link` — never suggest changing one non-primary type into another;
+- `danger` buttons inside a destructive confirmation dialog;
+- buttons whose type or size is a prop passed in by the caller;
+- a primary inside an inline notice, banner or `Alert` action: when it is the notice's one way forward, primary is right;
+- small buttons anywhere other than pattern 3 (toolbars, table cells, list rows, tags, popovers, section-title `extra`s, graph node headers).
 
 If an exclusion applies, return no finding. If uncertain, use low confidence.
 """
