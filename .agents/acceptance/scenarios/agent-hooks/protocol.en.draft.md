@@ -1,6 +1,6 @@
 # Agent Runtime HTTP hooks — unpublished integration draft
 
-This draft describes integration base `196787eedd3578c895dc68c6af181bb16dedc842` (C2 + S + K + L). It is not release documentation. The implementation accepts allow/deny, full input replacement and additional context; the temporary control guard has been removed.
+This draft describes integration base `e1f284d2593a05103665c419fd80bb3c659b4cba` (C2 + S + K + L). It is not release documentation. The implementation accepts allow/deny, full input replacement and additional context; the temporary control guard has been removed.
 
 Bounded real HTTP, device, Web reapproval and Cloud source-API evidence is recorded. Effective-argument card projection and missing-source recovery have been repaired; source Stop critical retries are observed on the current integration. Full token/partial/mixed UI, successful model inference and managed QStash delivery remain unverified, and cancelled tools still have an incorrect Edited summary. This unpublished draft describes the implemented contract, not complete product acceptance.
 
@@ -77,7 +77,11 @@ A crash after HTTP delivery but before the checkpoint can duplicate the group. A
 
 ## Request and response
 
-Requests are JSON POSTs containing the hook event plus `hookId` and `hookType`. Tool events retain `identifier`, `apiName`, and `args`, with native `toolCallId`, `originalArgs`, execution source/target and available run associations supplied by the integrated producer. Optional associations depend on the actual runtime origin; do not invent parent IDs. Notification `eventFields`/`body` compatibility remains available, but control requests reject filtering or payload overrides. Remote payloads omit `finalState`.
+Requests are JSON POSTs containing the hook event plus `hookId` and `hookType`. Tool events retain `identifier`, `apiName`, and `args`, with native `toolCallId`, execution source/target and available run associations supplied by the integrated producer. Optional associations depend on the actual runtime origin; do not invent parent IDs. Notification `eventFields`/`body` compatibility remains available, but control requests reject filtering or payload overrides. Remote payloads omit `finalState`. Control requests additionally include the immutable `originalArgs` snapshot; ordinary tool notifications do not. Their `args` contain effective inputs.
+
+`userEmail` is optional HTTP-only enrichment after notification projection/static body is applied. It is read from the database only when the final userId matches the event initiator or this dispatch call's trusted runtime owner. A body field cannot authorize another identity or supply its own email, even after cache warming. When eventFields is present it must include userEmail to receive enrichment; omitting userId from that projection uses the event initiator for lookup without adding a userId field. Missing/failed/bounded-out lookups omit email without suppressing the notification. The per-dispatcher cache is bounded to1000 entries/five minutes; lookup waits are bounded toone second. Control requests use the same enrichment with cancellation and reject body/projection overrides.
+
+The separate L identity/owner candidate c942 (D acceptance f5ad) supplies trusted owner context at the real producers and uses trusted visitorUserId before runtime owner for external event userId. No actorUserId or public owner field is added; execution/permissions/DB owner does not change. This producer follow-up is not merged into the original-stack target above. Its r28 evidence covers six emitted types through programmatic share access, not all16 or public share UI. Static internal callback owner identity remains distinct from the visitor.
 
 Only a `beforeToolCall` webhook with `responseHandling:'toolCall'` interprets this response:
 

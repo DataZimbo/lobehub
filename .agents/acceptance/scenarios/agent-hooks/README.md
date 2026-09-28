@@ -92,3 +92,5 @@ The continued preflight has now prepared D-owned dependencies, migrated Postgres
 - [Ready continuation reuse](ready-reuse-checkpoint.md): real Cloud source retry after older-source expiry, own persisted hooks/ledger unchanged, scheduling-only boundary.
 
 - [Source read failure and recovery](source-read-failure-checkpoint.md): scoped Redis fault, actual Cloud API rejection and same-request recovery, with precise claim boundaries.
+
+- [r28 isolated trusted owner/email delivery](owner-email-checkpoint.md): five real local/queue fixtures; identity product source stays on the separate acceptance branch, broader quality has17 owner-fixture failures.
