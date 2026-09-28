@@ -302,7 +302,7 @@ export const messageRouter = router({
         topicId: z.string(),
       }),
     )
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input, ctx, signal }) => {
       await assertCanUseTopicTargets(guardCtx(ctx), [input.topicId]);
       await assertCreatorTopicTargets(guardCtx(ctx), [input.topicId]);
 
@@ -311,7 +311,7 @@ export const messageRouter = router({
         ctx.userId,
         ctx.workspaceId ?? undefined,
       );
-      return service.compact(input);
+      return service.compact(input, { signal });
     }),
 
   /**
