@@ -8,6 +8,7 @@ Status: preparation only. Starting revision `66af6210de918a26394f9afe5a389ac99c3
 - `mapping.md`: requirement mapping, fixtures, observations, and evidence rules.
 - `approval-repark.md`: partial-batch reapproval, pending siblings and stale/concurrent card actions; exact C2 binding pending.
 - `c1-interface.md`: pinned C1 interface observations, harness binding design and temporary unsupported-response boundary; no C1 integration or execution.
+- `c2-interface-preview.md`: coordinator-reported, uncommitted C2 persistence/Cloud/notification observations; verify against the final SHA before binding or execution.
 - `receiver.ts`, `responses.ts`, `harness.ts`: temporary HTTP fixtures and the real server `execAgent({ hooks })` entry seam. No product configuration endpoint.
 - `self-check.ts`: verifies fixture server behavior only; does not exercise LobeHub.
 - `protocol.{en,zh-CN}.draft.md`: unpublished bilingual drafts, eventual location `docs/development/basic/agent-runtime-hooks{,.zh-CN}.mdx` after final verification.
