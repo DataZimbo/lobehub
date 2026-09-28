@@ -49,6 +49,7 @@ vi.mock('@/server/modules/AgentRuntime/RuntimeExecutors', () => ({
   createRuntimeExecutors: vi.fn(function () {
     return {};
   }),
+  createRuntimeToolPreparation: vi.fn(() => vi.fn().mockResolvedValue(undefined)),
 }));
 vi.mock('@/server/services/mcp', () => ({ mcpService: {} }));
 vi.mock('@/server/services/queue', () => ({
