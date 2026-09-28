@@ -75,7 +75,18 @@ vi.mock('@lobechat/builtin-tools/dynamicInterventionAudits', () => ({
   dynamicInterventionAudits: [],
 }));
 
-const { safeFetch, publish } = vi.hoisted(() => ({ safeFetch: vi.fn(), publish: vi.fn() }));
+const { safeFetch, publish, getEmailsByIds } = vi.hoisted(() => ({
+  safeFetch: vi.fn(),
+  publish: vi.fn(),
+  getEmailsByIds: vi.fn(),
+}));
+vi.mock('@/database/models/user', () => ({
+  UserModel: class {
+    static getEmailsByIds = getEmailsByIds;
+    getUserPreference = async () => ({});
+  },
+}));
+vi.mock('@/database/server', () => ({ getServerDB: async () => ({}) }));
 vi.mock('@lobechat/ssrf-safe-fetch', () => ({ ssrfSafeFetch: safeFetch }));
 vi.mock('@/libs/qstash', () => ({
   OtelQstashClient: class {
@@ -129,8 +140,8 @@ const makeState = () => ({
     })),
   },
 });
-const setup = (state = makeState()) => {
-  const service = new AgentRuntimeService({} as any, 'user-1', { queueService: null });
+const setup = (state = makeState(), ownerUserId = 'user-1') => {
+  const service = new AgentRuntimeService({} as any, ownerUserId, { queueService: null });
   const coordinator = (service as any).coordinator;
   coordinator.loadAgentState.mockResolvedValue(state);
   const newState = { ...state, status: 'done', stepCount: 2 };
@@ -167,6 +178,11 @@ const execute = (service: AgentRuntimeService, runOperationId = operationId) =>
 const httpEvents = () => safeFetch.mock.calls.map(([, request]) => JSON.parse(request.body));
 
 beforeEach(() => {
+  getEmailsByIds
+    .mockReset()
+    .mockImplementation(async (_db, ids: string[]) =>
+      ids.map((id) => ({ id, email: `${id}@example.test` })),
+    );
   vi.mocked(isQueueAgentRuntimeEnabled).mockReturnValue(false);
   safeFetch.mockReset().mockImplementation(async () => new Response('{}'));
   publish.mockReset().mockResolvedValue({ messageId: 'queued' });
@@ -190,6 +206,7 @@ describe('lifecycle notifications from executeStep', () => {
         },
       } as any);
       const { service, step, newState, coordinator } = setup(state);
+      const dispatch = vi.spyOn(hookDispatcher, 'dispatch');
       const writes = observeStateWrites(coordinator);
       const error = { type: 'ProviderFailure', message: 'provider failed' };
       step.mockResolvedValue({
@@ -201,13 +218,125 @@ describe('lifecycle notifications from executeStep', () => {
       expect(httpEvents().map((event) => event.hookType)).toEqual(events);
       for (const event of httpEvents()) {
         expect(event.userId).toBe('visitor-1');
+        expect(event.userEmail).toBe('visitor-1@example.test');
         expect(event).not.toHaveProperty('actorUserId');
         expect(event).not.toHaveProperty('ownerUserId');
+      }
+      for (const type of events) {
+        expect(dispatch).toHaveBeenCalledWith(
+          operationId,
+          type,
+          expect.objectContaining({ userId: 'visitor-1' }),
+          expect.any(Array),
+          { ownerUserId: 'user-1' },
+        );
       }
       expect(writes.length).toBeGreaterThan(0);
       expect(writes.every((write: any) => write.origin.userId === 'user-1')).toBe(true);
       expect((service as any).userId).toBe('user-1');
       expect(state.origin.userId).toBe('user-1');
+    },
+  );
+
+  it('keeps per-service owners separate across overlapping visitor runs', async () => {
+    const dispatch = vi.spyOn(hookDispatcher, 'dispatch');
+    const runs = ['owner-a', 'owner-b'].map((ownerUserId) => {
+      const runOperationId = `operation-${ownerUserId}`;
+      const state = normalizeAgentState({
+        ...makeState(),
+        operationId: runOperationId,
+        origin: { ...origin, userId: ownerUserId },
+        principal: {
+          actor: {
+            shareVisitor: {
+              agentId: 'agent-1',
+              shareId: 'share-1',
+              visitorUserId: `visitor-${ownerUserId}`,
+            },
+          },
+        },
+      } as any);
+      return { ...setup(state, ownerUserId), ownerUserId, runOperationId };
+    });
+    await Promise.all(runs.map(({ service, runOperationId }) => execute(service, runOperationId)));
+    for (const { ownerUserId, runOperationId } of runs) {
+      for (const type of ['beforeStep', 'afterStep', 'onComplete']) {
+        expect(dispatch).toHaveBeenCalledWith(
+          runOperationId,
+          type,
+          expect.objectContaining({ userId: `visitor-${ownerUserId}` }),
+          expect.any(Array),
+          { ownerUserId },
+        );
+      }
+    }
+  });
+
+  it.each([false, true])(
+    'enriches all terminal/step owner callbacks without leaking cached email across workers (queue=%s)',
+    async (queue) => {
+      vi.mocked(isQueueAgentRuntimeEnabled).mockReturnValue(queue);
+      vi.stubEnv('QSTASH_TOKEN', 'test-token');
+      const run = async (owner: string, target: string, id: string) => {
+        const state = normalizeAgentState({
+          ...makeState(),
+          operationId: id,
+          origin: { ...origin, userId: owner },
+          principal: {
+            actor: {
+              shareVisitor: {
+                agentId: 'agent-1',
+                shareId: 'share-1',
+                visitorUserId: `visitor-${id}`,
+              },
+            },
+          },
+          host: {
+            hooks: events.map((type) => ({
+              id: type,
+              type,
+              webhook: {
+                url: 'https://example.com/hooks',
+                delivery: queue ? 'qstash' : 'fetch',
+                body: { userId: target, userEmail: 'forged@example.test' },
+              },
+            })),
+          },
+        } as any);
+        // Each service is a fresh worker; the singleton only shares the bounded email cache.
+        const { service, step, newState, coordinator } = setup(state, owner);
+        const writes = observeStateWrites(coordinator);
+        step.mockResolvedValue({
+          events: [{ type: 'done', reason: 'error' }],
+          newState: {
+            ...newState,
+            status: 'error',
+            error: { type: 'BusinessError', message: 'failed' },
+          },
+          nextContext: null,
+        });
+        await execute(service, id);
+        expect(writes.every((write: any) => write.origin.userId === owner)).toBe(true);
+      };
+      const cachedOwner = `owner-warm-${queue}`;
+      await run(cachedOwner, cachedOwner, `warm-${queue}`);
+      // One authorized owner and one forged body ID overlap after warming the same dispatcher cache.
+      await Promise.all([
+        run(`owner-next-${queue}`, `owner-next-${queue}`, `next-${queue}`),
+        run(`owner-other-${queue}`, cachedOwner, `forged-${queue}`),
+      ]);
+      const payloads = queue ? publish.mock.calls.map(([request]) => request.body) : httpEvents();
+      for (const id of [`warm-${queue}`, `next-${queue}`, `forged-${queue}`]) {
+        const delivered = payloads.filter((payload) => payload.operationId === id);
+        expect(delivered.map((payload) => payload.hookType)).toEqual(events);
+        for (const payload of delivered) {
+          if (id.startsWith('forged')) expect(payload).not.toHaveProperty('userEmail');
+          else expect(payload.userEmail).toBe(`${payload.userId}@example.test`);
+          expect(payload).not.toHaveProperty('ownerUserId');
+          expect(payload).not.toHaveProperty('actorUserId');
+        }
+      }
+      expect(getEmailsByIds.mock.calls.filter(([, ids]) => ids[0] === cachedOwner)).toHaveLength(1);
     },
   );
 
@@ -285,10 +414,15 @@ describe('lifecycle notifications from executeStep', () => {
     state.host.hooks.find((hook) => hook.type === 'onComplete')!.webhook = webhook;
     const { service } = setup(state);
     await execute(service);
-    expect(httpEvents().every((event) => event.userId === 'visitor-1')).toBe(true);
+    expect(
+      httpEvents().every(
+        (event) => event.userId === 'visitor-1' && event.userEmail === 'visitor-1@example.test',
+      ),
+    ).toBe(true);
     expect(publish).toHaveBeenCalledOnce();
     expect(publish.mock.calls[0][0].body).toMatchObject({
       userId: 'user-1',
+      userEmail: 'user-1@example.test',
       workspaceId: 'workspace-1',
       operationId,
     });

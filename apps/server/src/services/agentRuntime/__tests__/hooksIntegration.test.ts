@@ -16,6 +16,15 @@ import { hookDispatcher } from '../hooks';
 import type { AgentHookEvent } from '../hooks/types';
 
 const { hookFetch } = vi.hoisted(() => ({ hookFetch: vi.fn() }));
+vi.mock('@/database/models/user', () => ({
+  UserModel: class {
+    static getEmailsByIds = async (_db: unknown, ids: string[]) =>
+      ids.map((id) => ({ id, email: `${id}@example.test` }));
+    getUserPreference = async () => ({});
+  },
+}));
+vi.mock('@/database/server', () => ({ getServerDB: async () => ({}) }));
+
 vi.mock('@lobechat/ssrf-safe-fetch', () => ({ ssrfSafeFetch: hookFetch }));
 
 // ── Mocks ──────────────────────────────────────────
@@ -423,6 +432,7 @@ describe('durable approval resolution notifications', () => {
     async (identity) => {
       vi.restoreAllMocks();
       hookFetch.mockReset().mockResolvedValue(new Response('{}'));
+      const dispatch = vi.spyOn(hookDispatcher, 'dispatch');
       const event = {
         operationId: 'source',
         userId: identity === 'legacy' ? 'user-1' : 'visitor-1', // Persisted source identity.
@@ -454,7 +464,7 @@ describe('durable approval resolution notifications', () => {
             {
               id: 'approval',
               type: 'afterHumanIntervention',
-              webhook: { url: 'https://hooks.example/approval' },
+              webhook: { url: 'https://hooks.example/approval', body: { userId: 'user-1' } },
             },
           ],
           interventionHookEvents: [event],
@@ -489,10 +499,18 @@ describe('durable approval resolution notifications', () => {
       expect(hookFetch).toHaveBeenCalledTimes(1);
       expect(JSON.parse(hookFetch.mock.calls[0][1].body)).toMatchObject({
         action: 'approve',
-        userId: 'visitor-1',
+        userId: 'user-1',
+        userEmail: 'user-1@example.test',
         toolCallIds: ['native-1', 'native-2'],
         operationId: 'source',
       });
+      expect(dispatch).toHaveBeenCalledWith(
+        'continuation',
+        'afterHumanIntervention',
+        expect.objectContaining({ userId: 'visitor-1', operationId: 'source' }),
+        stored.host.hooks,
+        { ownerUserId: 'user-1' },
+      );
       expect(stored.origin.userId).toBe('user-1');
       expect(stored.host.interventionHookEvents).toEqual([]);
       await worker().executeStep({

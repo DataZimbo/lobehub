@@ -7,6 +7,15 @@ import { isQueueAgentRuntimeEnabled } from '@/server/services/queue/impls';
 import { hookDispatcher } from '../hooks';
 import { HumanInterventionHandler } from '../HumanInterventionHandler';
 
+vi.mock('@/database/models/user', () => ({
+  UserModel: class {
+    static getEmailsByIds = async (_db: unknown, ids: string[]) =>
+      ids.map((id) => ({ id, email: `${id}@example.test` }));
+    getUserPreference = async () => ({});
+  },
+}));
+vi.mock('@/database/server', () => ({ getServerDB: async () => ({}) }));
+
 vi.mock('@/server/services/queue/impls', () => ({
   isQueueAgentRuntimeEnabled: vi.fn(() => false),
 }));
@@ -17,7 +26,7 @@ const buildHandler = (
   messageModel: { updateMessagePlugin: any; updateToolMessage: any },
 ) => {
   const serverDB = { query: { messagePlugins: { findFirst: pluginQuery } } } as any;
-  return new HumanInterventionHandler(serverDB, messageModel as any);
+  return new HumanInterventionHandler(serverDB, messageModel as any, 'user-1');
 };
 
 describe('HumanInterventionHandler.process', () => {
@@ -74,7 +83,11 @@ describe('HumanInterventionHandler.process', () => {
               {
                 id: 'persisted-human',
                 type: hookType,
-                webhook: { url: 'https://example.com/human', delivery: 'fetch' },
+                webhook: {
+                  url: 'https://example.com/human',
+                  delivery: 'fetch',
+                  body: { userId: 'user-1' },
+                },
               },
             ],
           },
@@ -88,6 +101,7 @@ describe('HumanInterventionHandler.process', () => {
         }),
       );
       const state = JSON.parse(serialized);
+      const dispatch = vi.spyOn(hookDispatcher, 'dispatch');
       expect(hookDispatcher.hasHooks(state.operationId)).toBe(false);
       const result = await handler.process(
         state,
@@ -106,13 +120,21 @@ describe('HumanInterventionHandler.process', () => {
       await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
       const payload = JSON.parse(fetch.mock.calls[0][1]!.body as string);
       expect(payload).toMatchObject({
-        userId: 'visitor-1',
+        userId: 'user-1',
+        userEmail: 'user-1@example.test',
         hookId: 'persisted-human',
         hookType,
         operationId: 'restored-operation',
         toolCallId: 'tool-call-1',
         toolCallIds: action === 'reject' ? ['tool-call-1', 'tool-call-2'] : ['tool-call-1'],
       });
+      expect(dispatch).toHaveBeenCalledWith(
+        'restored-operation',
+        hookType,
+        expect.objectContaining({ userId: 'visitor-1' }),
+        state.host.hooks,
+        { ownerUserId: 'user-1' },
+      );
       expect(result.newState.origin.userId).toBe('user-1');
       expect(result.newState.host.hooks).toEqual(state.host.hooks);
       if (action === 'reject') {
@@ -186,6 +208,7 @@ describe('HumanInterventionHandler.process', () => {
           ...(action !== 'approve' && { rejectionReason: 'privacy concern' }),
         }),
         hooks,
+        { ownerUserId: 'user-1' },
       );
       expect(result.newState.host.hooks).toEqual(hooks);
       expect(result.newState.status).toBe(

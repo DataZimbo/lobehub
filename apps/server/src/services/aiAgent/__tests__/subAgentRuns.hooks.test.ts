@@ -8,6 +8,15 @@ import { isQueueAgentRuntimeEnabled } from '@/server/services/queue/impls';
 import { execAgentMember, execAgentThreadRun, type SubAgentRunDeps } from '../subAgentRuns';
 
 // Keep one network recorder for both legacy fetch and the SSRF-safe HTTP transport.
+vi.mock('@/database/models/user', () => ({
+  UserModel: class {
+    static getEmailsByIds = async (_db: unknown, ids: string[]) =>
+      ids.map((id) => ({ id, email: `${id}@example.test` }));
+    getUserPreference = async () => ({});
+  },
+}));
+vi.mock('@/database/server', () => ({ getServerDB: async () => ({}) }));
+
 vi.mock('@lobechat/ssrf-safe-fetch', () => ({
   ssrfSafeFetch: (url: string, init?: RequestInit) => globalThis.fetch(url, init),
 }));
@@ -100,9 +109,15 @@ describe('sub-agent call notifications', () => {
             shareVisitor: { agentId: 'agent-1', shareId: 'share-1', visitorUserId: 'visitor-1' },
           },
         },
-        host: { hooks: serializedHooks },
+        host: {
+          hooks: serializedHooks.map((hook) => ({
+            ...hook,
+            webhook: { ...hook.webhook, body: { userId: 'user' } },
+          })),
+        },
       };
       loadState.mockResolvedValue(parent);
+      const dispatch = vi.spyOn(hookDispatcher, 'dispatch');
       await invoke(kind);
       startAgent.mockResolvedValueOnce({ success: false, error: 'rejected' });
       await invoke(kind);
@@ -112,7 +127,18 @@ describe('sub-agent call notifications', () => {
         'beforeCallAgent',
         'onCallAgentError',
       ]);
-      expect(payloads().every((p) => p.userId === 'visitor-1')).toBe(true);
+      expect(
+        payloads().every((p) => p.userId === 'user' && p.userEmail === 'user@example.test'),
+      ).toBe(true);
+      for (const type of types) {
+        expect(dispatch).toHaveBeenCalledWith(
+          'parent-operation',
+          type,
+          expect.objectContaining({ userId: 'visitor-1' }),
+          parent.host.hooks,
+          { ownerUserId: 'user' },
+        );
+      }
       expect(deps.userId).toBe('user');
       expect(parent.origin.userId).toBe('user');
       expect(startAgent.mock.calls.every(([input]) => input.userId === undefined)).toBe(true);

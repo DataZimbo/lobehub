@@ -610,7 +610,7 @@ export class AgentRuntimeService {
     this.completionLifecycle = new CompletionLifecycle(db, userId, workspaceId, {
       includeShareVisitor,
     });
-    this.humanIntervention = new HumanInterventionHandler(db, this.messageModel);
+    this.humanIntervention = new HumanInterventionHandler(db, this.messageModel, this.userId);
 
     // Initialize ToolExecutionService with dependencies
     const builtinToolsExecutor = new BuiltinToolsExecutor(db, userId);
@@ -1829,6 +1829,7 @@ export class AgentRuntimeService {
               ),
             },
             agentState.host.hooks,
+            { ownerUserId: this.userId },
           );
           await this.coordinator.saveAgentState(operationId, {
             ...agentState,
@@ -2039,6 +2040,7 @@ export class AgentRuntimeService {
               steps: agentState?.stepCount || 0,
             },
             agentState?.host?.hooks,
+            { ownerUserId: this.userId },
           );
         } catch (hookError) {
           log('[%s] beforeStep hook dispatch error: %O', operationId, hookError);
@@ -2529,6 +2531,7 @@ export class AgentRuntimeService {
               totalToolCalls: stepResult.newState?.usage?.tools?.totalCalls ?? 0,
             },
             stepResult.newState?.host?.hooks,
+            { ownerUserId: this.userId },
           );
         } catch (hookError) {
           log('[%s] afterStep hook dispatch error: %O', operationId, hookError);
