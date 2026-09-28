@@ -82,6 +82,10 @@ jobs:
         run: |
           sha=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${BASE_SHA}...${HEAD_SHA}" --jq .merge_base_commit.sha || true)
           if [ -n "$sha" ] && git fetch --no-tags --depth=1 "https://github.com/${GITHUB_REPOSITORY}.git" "$sha"; then
+            # `vitest --changed` diffs `base...HEAD`, which needs a merge base the shallow
+            # clone lacks (git exits 128 and vitest reads that as "no changes"). Re-parent
+            # an identical tree onto the base so the merge base is the base itself.
+            git checkout -q "$(git -c user.name=ci -c user.email=ci@localhost commit-tree 'HEAD^{tree}' -p "$sha" -m 'diff base')"
             echo "sha=$sha" >> "$GITHUB_OUTPUT"
           fi
 
@@ -270,7 +274,11 @@ jobs:
 
       - name: Fetch merge base
         if: needs.plan.outputs.mode == 'affected'
-        run: git fetch --no-tags --depth=1 "https://github.com/${GITHUB_REPOSITORY}.git" "${{ needs.plan.outputs.base }}"
+        env:
+          BASE: ${{ needs.plan.outputs.base }}
+        run: |
+          git fetch --no-tags --depth=1 "https://github.com/${GITHUB_REPOSITORY}.git" "$BASE"
+          git checkout -q "$(git -c user.name=ci -c user.email=ci@localhost commit-tree 'HEAD^{tree}' -p "$BASE" -m 'diff base')"
 
       - name: Run tests
         env:
@@ -463,7 +471,11 @@ jobs:
 
       - name: Fetch merge base
         if: needs.plan.outputs.mode == 'affected'
-        run: git fetch --no-tags --depth=1 "https://github.com/${GITHUB_REPOSITORY}.git" "${{ needs.plan.outputs.base }}"
+        env:
+          BASE: ${{ needs.plan.outputs.base }}
+        run: |
+          git fetch --no-tags --depth=1 "https://github.com/${GITHUB_REPOSITORY}.git" "$BASE"
+          git checkout -q "$(git -c user.name=ci -c user.email=ci@localhost commit-tree 'HEAD^{tree}' -p "$BASE" -m 'diff base')"
 
       - name: Test Server
         env:

@@ -35,7 +35,9 @@ const exec = (command, args) =>
 const planAffectedTests = ({ base, packages, run = exec }) => {
   if (!base) return fullPlan(packages, 'no merge base');
 
-  const changed = run('git', ['diff', '--name-only', base, 'HEAD']).split('\n').filter(Boolean);
+  const changed = run('git', ['diff', '--name-only', `${base}...HEAD`])
+    .split('\n')
+    .filter(Boolean);
   const trigger = changed.find(isFullRunTrigger);
   if (trigger) return fullPlan(packages, `${trigger} changed`);
 
