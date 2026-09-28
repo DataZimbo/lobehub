@@ -10,7 +10,7 @@ Current r20/r21 supplement: [real token Stop](cloud-token-checkpoint.md) verifie
 
 Reusable previous evidence includes [cold B/fresh B→C device flow](cold-card-checkpoint.md), [missing-source early rejection](missing-source-checkpoint.md), [ready continuation reuse](ready-reuse-checkpoint.md), and [transient source-read recovery](source-read-failure-checkpoint.md). Preserve each execution SHA and seeded-provider boundary. Earlier [fixed implementation checks](fixed-integration-checkpoint.md) and [owner reconciliation](owner-regression-checkpoint.md) remain historical quality evidence, not the current type result.
 
-Independent code review has completed and its allocation is exhausted; no automatic new review pass is inferred from later repairs. The one final acceptance evidence check remains unused. Test model and managed QStash configuration are still missing. The initial phase-1 instructions below describe preparation provenance, not today's integrated feature support.
+[Independent review scope and CI correction](review-scope-checkpoint.md): the sole light follow-up at `5b762f88`/C2 `3fc72ae6` marked original P1/P2 resolved by static inspection only; no tests or D raw evidence were independently executed/reviewed. Later Cloud router repairs are outside that fixed review. The allocation is exhausted; no automatic new review pass is inferred. The one final acceptance evidence check remains unused. Test model and managed QStash configuration are still missing. The initial phase-1 instructions below describe preparation provenance, not today's integrated feature support.
 
 ## Files and finishing criteria
 

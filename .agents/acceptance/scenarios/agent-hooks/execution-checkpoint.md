@@ -1,5 +1,7 @@
 # Integrated execution checkpoint (not a final acceptance)
 
+[Review/CI record correction](review-scope-checkpoint.md): original P1/P2 were statically resolved at fixed 5b/C23fc, not independently tested or product accepted. L job108861551010 failed Topic duplicate parentId with PG23503 foreign key, not a unique-key fixture flake; separate PR20142 is outside Hook dependencies. Final acceptance checker remains unused.
+
 Latest r22: [custom contract and mixed Stop](cloud-custom-checkpoint.md) confirms that the real Marketplace producer does **not advertise cancel\_interaction**; the actual token request returns400 with unchanged DB/no claim. This is an unavailable action, not custom-handler retry coverage. Its supported mixed custom+binary Stop returns500→500→200→replay with receipts1→2→3→3, both members cancelled and no effects. Pending/final UI limits remain explicit.
 
 Current r20/r21 supplement: [real token Stop](cloud-token-checkpoint.md) verifies actual notification-token critical retry (500→500→200→replay, HTTP receipts 1→2→3→3). [Partial Review](cloud-partial-checkpoint.md) verifies authenticated token claims, actual local queue workers, B→C repark with pending sibling retained, old-token terminal no-ops, stale-revision 409, reject/approve/Stop IDs and no tool side effects. Both served private Cloud `69c38102` + OSS `ab5d35a6d7`. The actual token Web URL is an unknown route; pending chat remained a skeleton and final cancelled/rejected tools still show false Edited/+1. These API results are not complete UI or inference passes.
