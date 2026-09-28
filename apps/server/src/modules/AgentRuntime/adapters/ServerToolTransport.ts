@@ -1,5 +1,7 @@
 import type {
+  AfterToolCallHookEvent,
   AgentState,
+  ToolCallErrorHookEvent,
   ToolCallPreparation,
   ToolRunContext,
   ToolRunExecution,
@@ -19,6 +21,7 @@ import type { ChatToolPayload } from '@lobechat/types';
 
 import { AgentModel } from '@/database/models/agent';
 import { isDeviceCapablePlan, isLocalSandboxEnabled } from '@/helpers/executionTarget';
+import type { ToolCallControlEvent } from '@/server/services/agentRuntime/hooks';
 import type { DeviceAccessReason } from '@/server/services/aiAgent/deviceToolAudit';
 import {
   isDeviceToolIdentifier,
@@ -100,7 +103,7 @@ export class ServerToolTransport implements ToolTransport {
           {
             ...buildToolCallHookContext(chatToolPayload, context, this.ctx),
             error: error instanceof Error ? error.message : String(error),
-          },
+          } satisfies ToolCallErrorHookEvent,
           context.state.host?.hooks,
         )
         .catch(() => {});
@@ -113,9 +116,11 @@ export class ServerToolTransport implements ToolTransport {
   }
 
   async prepare(call: ChatToolPayload, context: ToolRunContext): Promise<ToolCallPreparation> {
-    const event = buildToolCallHookContext(call, context, this.ctx);
-    if (!this.ctx.hookDispatcher)
-      return { originalArgs: event.originalArgs ?? event.args, status: 'ready' };
+    const event: ToolCallControlEvent = {
+      ...buildToolCallHookContext(call, context, this.ctx),
+      originalArgs: structuredClone(context.originalArgs ?? context.parsedArgs),
+    };
+    if (!this.ctx.hookDispatcher) return { originalArgs: event.originalArgs, status: 'ready' };
     return this.ctx.hookDispatcher.prepareToolCall(
       this.ctx.operationId,
       event,
@@ -130,7 +135,6 @@ export class ServerToolTransport implements ToolTransport {
     const preparation =
       context.state.toolPreparations?.[chatToolPayload.id] ??
       (await this.prepare(chatToolPayload, context));
-    context.originalArgs = preparation.originalArgs;
     if (context.abortSignal?.aborted || preparation.status === 'cancelled')
       return this.abortedBeforeLaunch();
     if (preparation.status === 'blocked') {
@@ -426,7 +430,7 @@ export class ServerToolTransport implements ToolTransport {
           mocked,
           result,
           success: result.success,
-        },
+        } satisfies AfterToolCallHookEvent,
         context.state.host?.hooks,
       )
       .catch(() => {});

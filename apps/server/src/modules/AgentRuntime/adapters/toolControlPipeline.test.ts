@@ -2,6 +2,7 @@ import type { AgentRuntimeHost, AgentState, ToolCallHookEvent } from '@lobechat/
 import {
   AgentRuntime,
   createAgentRuntimeExecutors,
+  createRunContext,
   createToolPreparation,
   GeneralChatAgent,
 } from '@lobechat/agent-runtime';
@@ -16,8 +17,14 @@ import { HookDispatcher } from '@/server/services/agentRuntime/hooks';
 import type { RuntimeExecutorContext } from '../context';
 import { ServerToolTransport } from './ServerToolTransport';
 
-const { fetchHook, queueMode } = vi.hoisted(() => ({ fetchHook: vi.fn(), queueMode: vi.fn() }));
+const { fetchHook, getEmailsByIds, queueMode } = vi.hoisted(() => ({
+  fetchHook: vi.fn(),
+  getEmailsByIds: vi.fn(),
+  queueMode: vi.fn(),
+}));
 vi.mock('@lobechat/ssrf-safe-fetch', () => ({ ssrfSafeFetch: fetchHook }));
+vi.mock('@/database/models/user', () => ({ UserModel: { getEmailsByIds } }));
+vi.mock('@/database/server', () => ({ getServerDB: async () => ({}) }));
 vi.mock('@/server/services/queue/impls', () => ({ isQueueAgentRuntimeEnabled: queueMode }));
 vi.mock('../redis', () => ({
   getAgentRuntimeRedisClient: () => ({ duplicate: () => ({ disconnect: vi.fn() }) }),
@@ -164,6 +171,7 @@ function setup(hooks: AgentHook[], signal?: AbortSignal, restore = false) {
 }
 
 beforeEach(() => {
+  getEmailsByIds.mockReset().mockResolvedValue([]);
   fetchHook.mockReset().mockImplementation(async () => response('allow'));
   queueMode.mockReturnValue(false);
 });
@@ -174,6 +182,7 @@ describe('beforeToolCall control pipeline', () => {
     'uses the persisted share visitor for hook identity while executing as the owner, queue=%s',
     async (queue) => {
       queueMode.mockReturnValue(queue);
+      getEmailsByIds.mockResolvedValue([{ id: 'visitor-1', email: 'visitor@example.test' }]);
       const fixture = setup(
         [
           control(),
@@ -206,6 +215,7 @@ describe('beforeToolCall control pipeline', () => {
       for (const [, request] of fetchHook.mock.calls) {
         expect(JSON.parse(request.body)).toMatchObject({
           userId: 'visitor-1',
+          userEmail: 'visitor@example.test',
           args: { userId: 'untrusted-input' },
         });
       }
@@ -214,6 +224,7 @@ describe('beforeToolCall control pipeline', () => {
         expect.objectContaining({ userId: 'user' }),
       );
       expect(fixture.state.origin?.userId).toBe('origin-owner');
+      expect(getEmailsByIds).toHaveBeenCalledExactlyOnceWith({}, ['visitor-1']);
     },
   );
 
@@ -267,6 +278,35 @@ describe('beforeToolCall control pipeline', () => {
         );
     },
   );
+
+  it('cancels during email lookup before HTTP, approval or tool execution', async () => {
+    let resolveEmail!: (rows: { id: string; email: string }[]) => void;
+    getEmailsByIds.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveEmail = resolve;
+        }),
+    );
+    const abort = new AbortController();
+    const fixture = setup([control()], abort.signal);
+    fixture.state.userInterventionConfig = { approvalMode: 'manual' };
+    const pending = fixture.step();
+    await vi.waitFor(() => expect(getEmailsByIds).toHaveBeenCalledTimes(1));
+    abort.abort();
+    const result = await pending;
+    resolveEmail([{ id: 'user', email: 'late@example.test' }]);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(result.newState.toolPreparations?.['native-1'].status).toBe('cancelled');
+    expect(fetchHook).not.toHaveBeenCalled();
+    expect(fixture.execute).not.toHaveBeenCalled();
+    expect(fixture.rows).toEqual([
+      expect.objectContaining({
+        tool_call_id: 'native-1',
+        pluginIntervention: { status: 'aborted' },
+      }),
+    ]);
+    expect(result.events.some((event) => event.type === 'human_approve_required')).toBe(false);
+  });
 
   it('allow still requires product approval', async () => {
     const fixture = setup([control()]);
@@ -637,6 +677,31 @@ describe('beforeToolCall control pipeline', () => {
     expect(history[1].tools?.[0].arguments).toBe('{"path":"a"}');
   });
 
+  it('prepares from the detached original snapshot rather than rewritten arguments or mutable state', async () => {
+    const fixture = setup([control()]);
+    fixture.state.toolPreparations = {
+      'native-1': { originalArgs: { nested: { path: 'original' } }, status: 'ready' },
+    };
+    const tool = { ...call(), arguments: '{"nested":{"path":"effective"}}' };
+    const context = createRunContext({
+      host: fixture.host,
+      mode: 'single',
+      parentMessageId: 'assistant',
+      state: fixture.state,
+      tool,
+    });
+    fixture.state.toolPreparations['native-1'].originalArgs.nested = { path: 'later-state' };
+    const prepared = await fixture.host.transports.tools!.prepare!(tool, context);
+    expect(context.originalArgs).toEqual({ nested: { path: 'original' } });
+    expect(prepared.originalArgs).toEqual({ nested: { path: 'original' } });
+    expect(prepared.originalArgs).not.toBe(context.originalArgs);
+    expect(prepared.originalArgs.nested).not.toBe(context.originalArgs?.nested);
+    expect(JSON.parse(fetchHook.mock.calls[0][1].body)).toMatchObject({
+      args: { nested: { path: 'original' } },
+      originalArgs: { nested: { path: 'original' } },
+    });
+  });
+
   it('replaces inputs serially before permission, card and execution, retaining the original snapshot', async () => {
     const inputs: Record<string, unknown>[] = [];
     fetchHook.mockImplementation(async (_url, init) => {
@@ -653,12 +718,18 @@ describe('beforeToolCall control pipeline', () => {
         }),
       );
     });
+    getEmailsByIds.mockResolvedValue([{ id: 'user', email: 'owner@example.test' }]);
     const fixture = setup([control('one'), control('two')]);
     fixture.state.userInterventionConfig = { approvalMode: 'manual' };
     const parked = await fixture.step();
     expect(parked.newState.status).toBe('waiting_for_human');
     expect(inputs.map((input) => input.args)).toEqual([{ path: 'a' }, { path: 'a/changed' }]);
     expect(inputs.map((input) => input.originalArgs)).toEqual([{ path: 'a' }, { path: 'a' }]);
+    expect(inputs.map(({ userId, userEmail }) => ({ userId, userEmail }))).toEqual([
+      { userId: 'user', userEmail: 'owner@example.test' },
+      { userId: 'user', userEmail: 'owner@example.test' },
+    ]);
+    expect(getEmailsByIds).toHaveBeenCalledExactlyOnceWith({}, ['user']);
     expect(fixture.rows[0]).toMatchObject({
       plugin: { arguments: '{"path":"a/changed/changed"}' },
       pluginState: {
@@ -1043,7 +1114,6 @@ describe('beforeToolCall control pipeline', () => {
       await fixture.step([{ ...call(), executor: target === 'client' ? 'client' : 'server' }]);
       const expected = {
         args: { path: 'effective' },
-        originalArgs: { path: 'a' },
         toolCallId: 'native-1',
       };
       expect(before).toHaveBeenCalledWith(expect.objectContaining(expected));
@@ -1052,7 +1122,12 @@ describe('beforeToolCall control pipeline', () => {
           expect.objectContaining(expected),
         ),
       );
+      expect(before.mock.calls[0][0]).not.toHaveProperty('originalArgs');
+      expect((target === 'error' ? error : after).mock.calls[0][0]).not.toHaveProperty(
+        'originalArgs',
+      );
       expect(fetchHook).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(fetchHook.mock.calls[0][1].body).originalArgs).toEqual({ path: 'a' });
       if (target !== 'error')
         expect(fixture.rows[0]).toMatchObject({
           plugin: { arguments: '{"path":"effective"}' },

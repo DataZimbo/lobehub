@@ -5,7 +5,12 @@
  * Hook registration, webhook delivery, and serialization types are server-specific.
  */
 
-import type { AgentHookEvent, AgentHookType } from '@lobechat/agent-runtime';
+import type {
+  AgentHookEvent,
+  AgentHookType,
+  AnyHookEvent,
+  ToolCallHookEvent,
+} from '@lobechat/agent-runtime';
 import type {
   AgentHookMatcher,
   AgentHookWebhookConfig,
@@ -32,6 +37,15 @@ export type {
 } from '@lobechat/agent-runtime';
 
 // ── Server-side Hook Types ───────────────────────────────
+
+/** Outgoing projection, enriched with the trusted userId's available email. */
+export type AgentHookWebhookPayload = Partial<AnyHookEvent> &
+  Record<string, unknown> & { userEmail?: string };
+
+/** Preparation-only snapshot; lifecycle notifications use T's tool context. */
+export type ToolCallControlEvent = Omit<ToolCallHookEvent, 'mock'> & {
+  originalArgs: Record<string, unknown>;
+};
 
 /** Same schema and type in memory and persisted state, including fallback and header templates. */
 export type AgentHookWebhook = AgentHookWebhookConfig;
