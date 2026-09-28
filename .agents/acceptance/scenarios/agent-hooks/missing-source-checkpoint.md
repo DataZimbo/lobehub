@@ -1,5 +1,13 @@
 # Missing-source approval recovery — r11
 
+## Early preflight follow-up — r12
+
+The coordinator's final candidate `3fc72ae6518459d38516157a24509dbca2839bbf` moves source validation before turn setup, so the older r11 placeholder-error observation below is historical. It is merged/pushed without conflicts into D base `5b762f884d`; actual served docs is `6e26afa771`. Full revisions are in `.acceptances/hooks-d-source-preflight-r12/assets/served.json`.
+
+A fresh browser submitted the safe r11 pending B record again (not the old r7 hookless continuation). Redis source was already missing. Real OSS fallback reached execAgent HTTP 500 with `Failed to execute agent: Approval source runtime state is missing or expired`. Every projected message and operation snapshot is identical before/after, including pending B/original A/context/native identity. No successor message, durable operation, receiver request or file appeared. The receiver was live. Device gateways/CLI were not started for this early-preflight test; the UI's cached connected label is not new device execution evidence. The existing r11 error card was visible before the action, and no distinct new feedback was observed; do not count that old card as proof of an immediate r12 error presentation.
+
+Artifacts include db-before/after.json, http-summary.json, result.json, and the actual Submit video/original frames (first/action/final inspected). Four explicit changed paths pass 53 tests and lint; current fulltype1444 matches the preserved r9 baseline diagnostics byte-for-byte, still a failed type gate. r11/r7 retain their original served versions. Browser and owned app/receiver/QStash processes were stopped, database/Redis retained. Generic Review, transient source-read recovery and ready-continuation product reuse remain unverified; owner tests alone do not close them.
+
 Fixed C2 `ff0f8dbadffcee0eb895fbe06253f987693c8887` is integrated into D base `230f233fbc9fb3565afed2c86ba590ace0220492`; actual served docs is `d7752ac0f9a4b2cc75b629c8370d2c26912985f9`. Both merges were conflict-free and pushed. Product/fixture changes belong to the owner branch. Evidence is `.acceptances/hooks-d-missing-source-r11/assets/`.
 
 A new synthetic assistant tool was seeded through real execAgent/executeStep, and the real HTTP hook rewrote original A to B/context B. Source `op_1790604219343_agt_IWDIVoTW0ikL_tpc_xSvRowJ4hudB_6R58nWJf` had 17 saved hooks and waited for approval. Actual logged-in OSS Web displayed B. D explicitly expired only this new source's Redis state via PEXPIRE 1, preserving SQL rows and locks. This is deterministic missing-state injection, not a second natural two-hour expiry or model-generated tool call. The old hookless continuation was untouched.
