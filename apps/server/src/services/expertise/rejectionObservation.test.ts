@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { deliveryStandardsDomainCopy, refineRejectionFields } from './rejectionObservation';
+import {
+  deliveryStandardsDomainCopy,
+  findQuotedMessage,
+  refineRejectionFields,
+} from './rejectionObservation';
 
 const fields = (overrides: Partial<Parameters<typeof refineRejectionFields>[0]> = {}) => ({
   limits: '',
@@ -68,5 +72,28 @@ describe('deliveryStandardsDomainCopy', () => {
     expect(deliveryStandardsDomainCopy(null, '  said: the button is too small')).toMatchObject({
       title: 'My delivery standards',
     });
+  });
+});
+
+describe('findQuotedMessage', () => {
+  const messages = [
+    { content: '好的，我先把按钮改成默认尺寸', id: 'msg_3' },
+    { content: '按钮太小了，点不中', id: 'msg_2' },
+    { content: null, id: 'msg_1' },
+  ];
+
+  it('finds the message an excerpt was copied from, across whitespace and quote marks', () => {
+    expect(findQuotedMessage(messages, '「按钮 太小了」')).toBe('msg_2');
+  });
+
+  it('prefers the newest message when the same words recur', () => {
+    expect(
+      findQuotedMessage([{ content: '按钮太小了', id: 'msg_9' }, ...messages], '按钮太小了'),
+    ).toBe('msg_9');
+  });
+
+  it('links nothing when the excerpt is empty or was never said', () => {
+    expect(findQuotedMessage(messages, '')).toBeUndefined();
+    expect(findQuotedMessage(messages, '颜色对比度不足')).toBeUndefined();
   });
 });

@@ -230,7 +230,7 @@ export const chainExpertiseRuleGroupDraft = ({
   ],
 });
 
-export const EXPERTISE_TOPIC_INGESTION_PROMPT_VERSION = 'v2';
+export const EXPERTISE_TOPIC_INGESTION_PROMPT_VERSION = 'v3';
 
 export const EXPERTISE_TOPIC_INGESTION_JSON_SCHEMA = {
   name: 'expertise_topic_ingestion',
@@ -251,6 +251,10 @@ export const EXPERTISE_TOPIC_INGESTION_JSON_SCHEMA = {
                   example: { type: 'string' },
                   layer: { type: ['string', 'null'] },
                   outcome: { enum: ['pass', 'violation'], type: 'string' },
+                  // A verbatim excerpt of the one message the observation rests on. The service
+                  // looks it up in the topic to link the hit to that message, so the reader can
+                  // jump from a rule to the turn that taught it; "" when no single message does.
+                  quote: { type: 'string' },
                   reasoning: { type: 'string' },
                   title: { type: 'string' },
                 },
@@ -259,6 +263,7 @@ export const EXPERTISE_TOPIC_INGESTION_JSON_SCHEMA = {
                   'existingLessonCode',
                   'layer',
                   'outcome',
+                  'quote',
                   'reasoning',
                   'title',
                 ],
@@ -289,6 +294,8 @@ For a match, turn concrete evidence into observations. Attaching to an existing 
 - existingLessonCode holds a lesson code and nothing else. Never put source code, a file path, a symbol name, a lesson title, or any identifier taken from the conversation there — those all read as "no existing lesson" and silently fork a duplicate.
 - Only when no listed lesson carries the judgment, set existingLessonCode to null and propose one reusable lesson. Before doing so, state to yourself what it adds that every listed lesson misses; if you cannot, attach instead. Rewording a listed lesson is not a new lesson.
 - Do not turn implementation trivia or a one-off fact into a lesson.
+
+For each observation, put in \`quote\` one short excerpt (a sentence or less) copied character for character from the single message the observation rests on — usually the user's correction or the reply that showed the judgment. Do not paraphrase, translate or join text from two messages; answer "" when no single message carries it.
 
 Use only declared layer keys. Keep evidence short and grounded in the supplied conversation, and write human-facing text in the language of the conversation.`;
 

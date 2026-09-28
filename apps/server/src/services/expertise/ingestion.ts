@@ -45,12 +45,21 @@ import type { ConsolidationResult } from './consolidation';
 import { ExpertiseConsolidationService } from './consolidation';
 import { resolveExpertiseModelConfig } from './modelConfig';
 import { isProviderAccountError } from './providerAccountError';
-import { deliveryStandardsDomainCopy, refineRejectionFields } from './rejectionObservation';
+import {
+  deliveryStandardsDomainCopy,
+  findQuotedMessage,
+  refineRejectionFields,
+} from './rejectionObservation';
 
 const log = debug('lobe-server:expertise-ingestion');
 
 const MAX_CONTEXT_MESSAGES = 24;
 const MAX_CONTEXT_CHARS = 24_000;
+/**
+ * How far back an observation's excerpt is looked for. Wider than the context window because the
+ * self-review path serializes its own context, which can reach older turns than the last 24.
+ */
+const MAX_QUOTE_LOOKUP_MESSAGES = 200;
 /**
  * Frames attached to one round's distillation. A round is a batch, unlike the single-check review
  * that caps at 3 — but every frame is a full base64 body, so the cap is what keeps a 20-rejection
@@ -75,6 +84,8 @@ const AnalysisSchema = z.object({
             existingLessonCode: z.string().nullable(),
             layer: z.string().nullable(),
             outcome: z.enum(['pass', 'violation']),
+            // Absent from answers to older prompt versions; reads as "no single message".
+            quote: z.string().default(''),
             reasoning: z.string(),
             title: z.string(),
           }),
@@ -201,6 +212,8 @@ interface PersistableObservation {
    * N rejections" a real count rather than a count of analysis passes.
    */
   sourceCheckResultIds?: string[];
+  /** The conversation message the observation was read from, when its excerpt was found. */
+  sourceMessageId?: string;
   /**
    * `one-off` when the model could not lift the rejection above an instruction about that one
    * delivery. Only written on a new lesson; a later round attaching to it clears the mark,
@@ -458,6 +471,13 @@ export class ExpertiseIngestionService {
       },
     );
     const analysis = AnalysisSchema.parse(raw);
+    // Read once for every observation; the self-review path hands over its own serialized
+    // context, so the topic's messages are looked up here rather than taken from it.
+    const quoted = analysis.domains.some((result) =>
+      result.observations.some((observation) => observation.quote.trim()),
+    )
+      ? await this.readTopicMessages(input.topicId, MAX_QUOTE_LOOKUP_MESSAGES)
+      : [];
     let ingested = 0;
 
     for (const result of analysis.domains) {
@@ -465,7 +485,10 @@ export class ExpertiseIngestionService {
       if (!domain || !result.matches) continue;
       await this.persistDomainRun({
         domain,
-        observations: result.observations,
+        observations: result.observations.map((observation) => ({
+          ...observation,
+          sourceMessageId: findQuotedMessage(quoted, observation.quote),
+        })),
         run: {
           actorId: input.agentId,
           actorType: 'agent',
@@ -778,6 +801,18 @@ export class ExpertiseIngestionService {
   };
 
   private readTopicContext = async (topicId: string) => {
+    const rows = await this.readTopicMessages(topicId, MAX_CONTEXT_MESSAGES);
+    return {
+      hadHumanInLoop: rows.some((row) => row.role === 'user'),
+      serializedContext: rows
+        .reverse()
+        .map((row) => `[${row.role}] ${row.content ?? ''}`)
+        .join('\n\n'),
+    };
+  };
+
+  /** A topic's main-thread messages, newest first; empty when the topic is not the caller's. */
+  private readTopicMessages = async (topicId: string, limit: number) => {
     const [topic] = await this.db
       .select({ id: topics.id })
       .from(topics)
@@ -788,11 +823,11 @@ export class ExpertiseIngestionService {
         ),
       )
       .limit(1);
-    if (!topic) return { hadHumanInLoop: false, serializedContext: '' };
+    if (!topic) return [];
 
-    const rows = await this.db.query.messages.findMany({
-      columns: { content: true, createdAt: true, role: true },
-      limit: MAX_CONTEXT_MESSAGES,
+    return this.db.query.messages.findMany({
+      columns: { content: true, createdAt: true, id: true, role: true },
+      limit,
       orderBy: [desc(messages.createdAt)],
       where: and(
         this.workspaceId
@@ -805,13 +840,6 @@ export class ExpertiseIngestionService {
         notShareVisitorMessage(),
       ),
     });
-    return {
-      hadHumanInLoop: rows.some((row) => row.role === 'user'),
-      serializedContext: rows
-        .reverse()
-        .map((row) => `[${row.role}] ${row.content ?? ''}`)
-        .join('\n\n'),
-    };
   };
 
   private persistDomainRun = async (input: {
@@ -907,6 +935,7 @@ export class ExpertiseIngestionService {
             outcome: observation.outcome,
             runId,
             sourceCheckResultId,
+            sourceMessageId: observation.sourceMessageId,
           })),
         );
         return sources.length;

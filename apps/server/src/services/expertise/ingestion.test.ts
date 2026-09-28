@@ -205,7 +205,7 @@ describe('ExpertiseIngestionService.ingestCompletion', () => {
       }),
       expect.objectContaining({
         tracing: expect.objectContaining({
-          promptVersion: 'v2',
+          promptVersion: 'v3',
           scenario: 'expertise_topic_ingestion',
         }),
       }),
@@ -441,6 +441,13 @@ describe('ExpertiseIngestionService.persistDomainRun', () => {
     expect(lesson?.title).toBe('Separate the runtime plane');
     // P-07 is taken even while retired, so the new row has to claim the next number.
     expect(lesson?.code).toBe('P-08');
+  });
+
+  it('links a conversation hit to the message it was read from', async () => {
+    const fake = createTx([]);
+    await persistRun(fake, [observation({ sourceMessageId: 'msg_2' })]);
+
+    expect(fake.inserted.get(expertiseHits)?.[0].sourceMessageId).toBe('msg_2');
   });
 
   it('marks a new standard the model could not lift above one delivery as a one-off', async () => {

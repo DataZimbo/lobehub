@@ -251,6 +251,8 @@ export default {
   'rules.sources.empty': 'The rejections behind this rule are no longer reachable.',
   'rules.sources.loadFailed': 'Could not load where this came from.',
   'rules.sources.open': 'Open',
+  'rules.sources.openMessage': 'Go to message',
+  'rules.sources.openTopic': 'Open conversation',
   'rules.sources.rejected': 'you said it learned this wrong',
   'rules.sources.retry': 'Try again',
   'rules.sources.round': 'round {{index}}',

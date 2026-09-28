@@ -12,6 +12,7 @@ import {
   expertiseInsights,
   expertiseLessons,
   expertiseRuns,
+  messages,
   projects,
   topics,
   users,
@@ -36,6 +37,65 @@ describe('ExpertiseModel', () => {
 
   afterEach(async () => {
     await serverDB.delete(users);
+  });
+
+  it('points a conversation source at its topic, agent and message', async () => {
+    await serverDB.insert(agents).values({ id: 'expertise-source-agent', userId });
+    await serverDB.insert(topics).values({
+      agentId: 'expertise-source-agent',
+      id: 'expertise-source-topic',
+      title: '排查生产环境连接池超时',
+      userId,
+    });
+    await serverDB.insert(messages).values({
+      content: '先看连接池指标，再动超时配置',
+      id: 'expertise-source-message',
+      role: 'user',
+      topicId: 'expertise-source-topic',
+      userId,
+    });
+    await serverDB.insert(expertiseDomains).values({
+      domainFilter: '生产故障排查',
+      id: 'expertise-test-domain',
+      slug: 'expertise-test-domain',
+      title: '生产故障排查',
+      userId,
+    });
+    await serverDB.insert(expertiseRuns).values({
+      actorId: 'agent-1',
+      actorType: 'agent',
+      domainId: 'expertise-test-domain',
+      id: runId,
+      reflectionKey: 'topic:expertise-source-topic:operation:op-1',
+      runIndex: 1,
+      subjectId: 'expertise-source-topic',
+      subjectType: 'topic',
+      userId,
+    });
+    await serverDB.insert(expertiseLessons).values({
+      code: 'P-01',
+      domainId: 'expertise-test-domain',
+      id: lessonId,
+      polarity: 'rule',
+      sections: [{ body: '先看连接池指标', key: 'rule' }],
+      title: '先看连接池指标',
+    });
+    await serverDB.insert(expertiseHits).values({
+      domainId: 'expertise-test-domain',
+      id: hitId,
+      lessonId,
+      outcome: 'violation',
+      runId,
+      sourceMessageId: 'expertise-source-message',
+    });
+
+    const [source] = await new ExpertiseModel(serverDB, userId).listLessonSources(lessonId);
+    expect(source).toMatchObject({
+      fromAcceptance: false,
+      messageId: 'expertise-source-message',
+      topicAgentId: 'expertise-source-agent',
+      topicId: 'expertise-source-topic',
+    });
   });
 
   it('returns the source topic title for a lesson hit', async () => {

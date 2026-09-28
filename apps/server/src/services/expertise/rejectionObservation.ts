@@ -75,3 +75,17 @@ export const deliveryStandardsDomainCopy = (projectName: string | null, rejectio
     title: projectName ? `${projectName} delivery standards` : 'My delivery standards',
   };
 };
+
+/**
+ * The message a verbatim excerpt was copied from, newest first: when the same words recur, the
+ * turn under review is the latest one. Undefined when the excerpt is empty or appears nowhere —
+ * a hit then keeps only its topic rather than pointing at a message that did not say it.
+ */
+export const findQuotedMessage = (
+  messages: { content: string | null; id: string }[],
+  quote: string,
+) => {
+  const needle = comparable(quote);
+  if (!needle) return;
+  return messages.find((message) => comparable(message.content ?? '').includes(needle))?.id;
+};

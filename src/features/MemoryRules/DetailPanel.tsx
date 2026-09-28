@@ -19,6 +19,7 @@ import {
   ClipboardCheckIcon,
   HistoryIcon,
   type LucideIcon,
+  MessageSquareTextIcon,
   MoreHorizontalIcon,
   PencilIcon,
   ScaleIcon,
@@ -27,8 +28,11 @@ import {
 } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router';
 
+import { useActiveWorkspaceSlug } from '@/business/client/hooks/useActiveWorkspaceSlug';
 import RightPanel from '@/features/RightPanel';
+import { buildWorkspaceAwarePath } from '@/features/Workspace/workspaceAwarePath';
 import type { RuleGroup, RuleItem, UpdateRuleInput } from '@/services/expertise';
 
 import Field from './Field';
@@ -238,6 +242,8 @@ const RuleDocument = ({
 }: RuleDocumentProps) => {
   const { t } = useTranslation('memory');
   const scopeLabel = useScopeLabel();
+  const navigate = useNavigate();
+  const workspaceSlug = useActiveWorkspaceSlug();
   const {
     data: sources,
     error: sourcesError,
@@ -517,6 +523,24 @@ const RuleDocument = ({
                     {source.checkTitle ?? source.where ?? ''}
                   </span>
                 </Flexbox>
+                {!source.fromAcceptance && source.topicId && source.topicAgentId && (
+                  <a
+                    className={styles.link}
+                    href={buildWorkspaceAwarePath(
+                      `/agent/${source.topicAgentId}/${source.topicId}${
+                        source.messageId ? `?locate=${source.messageId}` : ''
+                      }`,
+                      workspaceSlug,
+                    )}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate(e.currentTarget.getAttribute('href')!);
+                    }}
+                  >
+                    <Icon icon={MessageSquareTextIcon} size={12} />
+                    {t(source.messageId ? 'rules.sources.openMessage' : 'rules.sources.openTopic')}
+                  </a>
+                )}
                 {source.acceptanceId && (
                   <a
                     className={styles.link}

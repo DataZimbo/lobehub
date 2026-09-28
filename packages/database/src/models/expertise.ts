@@ -330,45 +330,63 @@ export class ExpertiseModel {
   listLessonSources = async (lessonId: string, limit = 20) => {
     const lineage = await this.resolveLineage(lessonId);
     if (lineage.length === 0) return [];
-    return this.db
-      .select({
-        acceptanceId: verifyRuns.acceptanceId,
-        checkTitle: verifyCheckResults.checkItemTitle,
-        createdAt: expertiseHits.createdAt,
-        example: expertiseHits.example,
-        // Read from the run, not from the check-result join: a deleted acceptance leaves that
-        // join empty, and the hit was still a rejection.
-        fromAcceptance: sql<boolean>`coalesce(${expertiseRuns.reflectionKey}, '') like 'acceptance:%'`,
-        id: expertiseHits.id,
-        reviewerComment: sql<string | null>`${verifyCheckResults.userDecisionDetail} ->> 'comment'`,
-        roundIndex: verifyRuns.roundIndex,
-        severity: expertiseHits.severity,
-        userDecision: expertiseHits.userDecision,
-        where: expertiseHits.where,
-      })
-      .from(expertiseHits)
-      .innerJoin(expertiseDomains, eq(expertiseDomains.id, expertiseHits.domainId))
-      .innerJoin(expertiseRuns, eq(expertiseRuns.id, expertiseHits.runId))
-      .leftJoin(verifyCheckResults, eq(verifyCheckResults.id, expertiseHits.sourceCheckResultId))
-      .leftJoin(verifyRuns, eq(verifyRuns.id, verifyCheckResults.verifyRunId))
-      .where(
-        and(
-          inArray(expertiseHits.lessonId, lineage),
-          this.scopeWhere(),
-          // Access to a shared group is not access to the rounds behind it: a hit distilled from
-          // a teammate's private round would otherwise show that round's check, the reviewer's
-          // words and a link to it. Same predicate the consolidation reader applies.
-          or(
-            eq(verifyCheckResults.userId, this.userId),
-            eq(verifyRuns.visibility, 'public'),
-            // No linked round (never mapped, or the round was deleted): nothing says the viewer
-            // may see where it came from, so only their own runs' evidence is shown.
-            and(isNull(verifyCheckResults.id), eq(expertiseRuns.userId, this.userId)),
+    return (
+      this.db
+        .select({
+          acceptanceId: verifyRuns.acceptanceId,
+          checkTitle: verifyCheckResults.checkItemTitle,
+          createdAt: expertiseHits.createdAt,
+          example: expertiseHits.example,
+          // Read from the run, not from the check-result join: a deleted acceptance leaves that
+          // join empty, and the hit was still a rejection.
+          fromAcceptance: sql<boolean>`coalesce(${expertiseRuns.reflectionKey}, '') like 'acceptance:%'`,
+          id: expertiseHits.id,
+          // Where a conversation source can be reopened: the topic, the agent it lives under, and
+          // the message the observation was read from when ingestion could find it.
+          messageId: expertiseHits.sourceMessageId,
+          reviewerComment: sql<
+            string | null
+          >`${verifyCheckResults.userDecisionDetail} ->> 'comment'`,
+          roundIndex: verifyRuns.roundIndex,
+          severity: expertiseHits.severity,
+          topicAgentId: topics.agentId,
+          topicId: topics.id,
+          userDecision: expertiseHits.userDecision,
+          where: expertiseHits.where,
+        })
+        .from(expertiseHits)
+        .innerJoin(expertiseDomains, eq(expertiseDomains.id, expertiseHits.domainId))
+        .innerJoin(expertiseRuns, eq(expertiseRuns.id, expertiseHits.runId))
+        // Only a topic the viewer can open: a shared group does not grant a teammate's topic.
+        .leftJoin(
+          topics,
+          and(
+            eq(expertiseRuns.subjectType, 'topic'),
+            eq(topics.id, expertiseRuns.subjectId),
+            buildWorkspaceWhere({ userId: this.userId, workspaceId: this.workspaceId }, topics),
           ),
-        ),
-      )
-      .orderBy(desc(expertiseHits.createdAt))
-      .limit(limit);
+        )
+        .leftJoin(verifyCheckResults, eq(verifyCheckResults.id, expertiseHits.sourceCheckResultId))
+        .leftJoin(verifyRuns, eq(verifyRuns.id, verifyCheckResults.verifyRunId))
+        .where(
+          and(
+            inArray(expertiseHits.lessonId, lineage),
+            this.scopeWhere(),
+            // Access to a shared group is not access to the rounds behind it: a hit distilled from
+            // a teammate's private round would otherwise show that round's check, the reviewer's
+            // words and a link to it. Same predicate the consolidation reader applies.
+            or(
+              eq(verifyCheckResults.userId, this.userId),
+              eq(verifyRuns.visibility, 'public'),
+              // No linked round (never mapped, or the round was deleted): nothing says the viewer
+              // may see where it came from, so only their own runs' evidence is shown.
+              and(isNull(verifyCheckResults.id), eq(expertiseRuns.userId, this.userId)),
+            ),
+          ),
+        )
+        .orderBy(desc(expertiseHits.createdAt))
+        .limit(limit)
+    );
   };
 
   /**
