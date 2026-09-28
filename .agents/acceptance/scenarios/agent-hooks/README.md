@@ -84,3 +84,5 @@ The continued preflight has now prepared D-owned dependencies, migrated Postgres
 - [Real Cloud source Review checkpoint](cloud-review-checkpoint.md): r14 ordinary Stop/replay, generic critical Stop failure, exact private Cloud/OSS combination and UI limits.
 
 - [Ready continuation reuse](ready-reuse-checkpoint.md): real Cloud source retry after older-source expiry, own persisted hooks/ledger unchanged, scheduling-only boundary.
+
+- [Source read failure and recovery](source-read-failure-checkpoint.md): scoped Redis fault, actual Cloud API rejection and same-request recovery, with precise claim boundaries.

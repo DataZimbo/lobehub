@@ -1,5 +1,7 @@
 # Missing-source approval recovery — r11
 
+Transient read-failure follow-up r16: [source-read-failure-checkpoint.md](source-read-failure-checkpoint.md) uses an operation-scoped Redis transport fault and actual Cloud source API. The target preflight fails before a successor assistant/operation, preserves B snapshots and resolving ownership; after fault removal the same request schedules one continuation, with replay unchanged. Earlier outer-read failures are separately recorded as rolled-back claims.
+
 Ready-reuse follow-up r15: [ready-reuse-checkpoint.md](ready-reuse-checkpoint.md) records actual Cloud source API recovery using the existing ready continuation after deterministic older-source expiry. Its 17 hooks and one pending event group are unchanged, with no new messages/operation/HTTP notification. Worker delivery and token/card UI are not covered; historical “ready reuse unverified” statements below describe r11/r12 only.
 
 ## Early preflight follow-up — r12
