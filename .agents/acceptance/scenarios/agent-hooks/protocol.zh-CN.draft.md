@@ -52,6 +52,23 @@ Runtime 模式与 webhook 传输方式是两个选择。`delivery:'fetch'` 为�
 
 同步 HTTP 不自动 retry。queue replay 可以再次发出请求，队列传输自身也可能重投。没有 outbox 或 exactly-once 保证。消费者应利用可用的 operation/tool 身份与自身业务规则处理重复；协议不新增 request ID，也不要求响应回传关联 ID。
 
+## 通知在哪些位置增加等待
+
+“仅通知” 描述响应能做什么，不代表 fire-and-forget。以下调用点都会等待 dispatch：
+
+| 位置                                  | 被延迟的动作                                                            |
+| ------------------------------------- | ----------------------------------------------------------------------- |
+| `beforeCompact`                       | 通知结束后才开始上下文压缩                                              |
+| `afterCompact` / `onCompactError`     | 压缩结果 / 错误路径等待通知后返回                                       |
+| `beforeCallAgent`                     | 通知结束后才创建 / 启动子 Agent                                         |
+| `afterCallAgent` / `onCallAgentError` | 等待通知后返回子运行启动结果 / 错误；不等待子运行完成                   |
+| 显式 Stop                             | 先落工具行、确认中断并记录完成，再直接通知；Stop 请求等待 dispatch 返回 |
+| continuation `afterHumanIntervention` | 持有 step lock，逐决策组投递并保存剩余列表后，才继续步骤处理            |
+
+`delivery:'fetch'` 在 local 和 queue Runtime 中均等待目标 HTTP 响应及响应体，或等待失败。每个 endpoint 的 `timeout` 独立生效，单位秒，默认 30。匹配的 endpoint 串行投递，因此慢 endpoint 的等待可能累加；该 timeout 不是整个事件的统一预算。选中的本地内存 handler 也会被等待，但 HTTP timeout 不限制 handler 的执行时间。
+
+`delivery:'qstash'` 等待 QStash publish 请求返回，不等待最终目标投递或目标响应。`timeout` 作为目标投递参数传给 QStash，不是 publish 调用的保证截止时间。publish 失败且允许 fetch fallback 时，还会等待一次受 endpoint timeout 限制的直接 HTTP 投递。所有通知响应仍被忽略，deny / 参数改写不能控制这些路径。压缩和子启动通知虽然等待投递，仍保留各自生产者对通知错误的隔离。
+
 ## 审批通知可靠性
 
 现代 continuation 将最终决策分组持久化到 host。在现有 step lock 内逐组投递、保存剩余列表，再更新内存；后组失败不重投已完成 checkpoint 的前组。普通投递失败沿 dispatcher 记录并消费该组；`fallback:'none'` 保留失败组并上抛 `CriticalHookDeliveryError`。checkpoint 以 action group 为单位；组内多个 endpoint 部分失败时，已成功的 endpoint 仍可能重投。

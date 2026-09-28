@@ -35,3 +35,11 @@ Reproduction uses a **fresh evidence directory**, D's existing private isolation
 ## Retained blockers
 
 The prior actual rewrite-card mismatch, Cloud overlay `DEFAULT_ASR_MODEL` compilation failure, missing real provider configuration and managed QStash access remain unresolved by this delta. New notification results do not convert any complete 31-item criterion to pass. Coordinator light-review closure and the same acceptance-checker's final evidence review remain outstanding. PR20137 stays draft and public bilingual docs remain unpublished.
+
+## Independent review handoff — pending owner closure
+
+Coordinator reports the initial independent review was static, with no tests run and partial F/T/C1 sampling. A **P1 candidate** concerns critical Stop delivery failing after terminal persistence and a same-request retry skipping dispatch while returning success. C2 owns confirmation/fix; D does not treat the candidate as confirmed or fixed. Ordinary best-effort failures remain the intended policy and must be distinguished from critical failure. Existing stop crash-loss documentation is not evidence that this retry behavior is acceptable. The eventual fixed SHA must receive targeted negative Stop/retry verification before closure.
+
+Coordinator also reports C1 CI has nine executeStep.test.ts failures from a missing createRuntimeToolPreparation mock; C1 owns the repair and a new head is pending. D's prior selected test runs do not establish this omitted CI path passes. No speculative product repair or upstream merge is made by D.
+
+The nonblocking latency documentation finding is addressed in both protocol drafts: named awaited producers, sequential per-endpoint fetch timeout (default 30 seconds), QStash publish versus target delivery, fallback wait, and ignored responses. This documentation-only update needs focused lint, not another product run. Public pages remain unpublished while product gates are open. The coordinator owns the final combined repair review; D's single final acceptance evidence review remains unused.

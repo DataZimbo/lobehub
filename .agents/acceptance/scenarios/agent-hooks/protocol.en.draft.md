@@ -52,6 +52,23 @@ Runtime mode and webhook transport are different choices. `delivery:'fetch'` (de
 
 Synchronous HTTP does not automatically retry. Queue replay can issue the request again, and queue transport may redeliver. There is no outbox or exactly-once guarantee. Consumers should handle duplicates using the event's available operation/tool identity and their own business rules; no new request ID or correlation echo is required by this protocol.
 
+## Where notifications add latency
+
+Notification-only describes what the response can do; it does not mean fire-and-forget. These producers await dispatch:
+
+| Position                              | What waits                                                                                                                             |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `beforeCompact`                       | Context compression starts after notification dispatch finishes                                                                        |
+| `afterCompact` / `onCompactError`     | The compression result/error path waits before returning                                                                               |
+| `beforeCallAgent`                     | Child creation/start waits before it begins                                                                                            |
+| `afterCallAgent` / `onCallAgentError` | Returning the child startup result/error waits; this does not wait for child completion                                                |
+| Explicit Stop                         | Rows settle, interruption is acknowledged and completion is recorded before direct notification; the Stop request then awaits dispatch |
+| Continuation `afterHumanIntervention` | The step lock remains held while each decision group is dispatched and its remaining list is saved, before step processing continues   |
+
+For `delivery:'fetch'`, both local and queue runtimes await the target HTTP response and body or failure. Each endpoint has its own timeout in seconds, default 30. Matching endpoints are dispatched sequentially, so slow endpoints can accumulate that wait; the timeout is not a single budget for the whole event. A selected local in-memory handler is also awaited, but the HTTP timeout does not limit handler execution.
+
+For `delivery:'qstash'`, the producer awaits the QStash publish request, not the target's eventual delivery or response. `timeout` is passed to QStash for target delivery; it is not a guaranteed deadline for the publish call. If publishing fails and fetch fallback is enabled, the producer additionally awaits direct HTTP delivery under the endpoint timeout. All notification responses remain ignored: deny or rewritten input cannot govern these paths. Compression and child-start notification failures retain their producer-specific error isolation despite the wait.
+
 ## Approval notification reliability
 
 Modern continuation persists the final decision groups in its host state. Under the existing step lock it dispatches one group, saves the remaining groups, then updates memory. A later group failure does not resend an earlier group whose checkpoint succeeded. Ordinary delivery failures follow the dispatcher’s log-and-consume policy; `fallback:'none'` keeps the failed group pending and propagates `CriticalHookDeliveryError`. The checkpoint is per action group, so partial failure across endpoints can resend an endpoint that already succeeded.
