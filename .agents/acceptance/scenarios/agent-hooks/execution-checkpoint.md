@@ -1,5 +1,7 @@
 # Integrated execution checkpoint (not a final acceptance)
 
+Current r23: [real Cloud conversation Web](cloud-web-checkpoint.md) now covers single and partial-batch B→C reapproval through actual buttons, including rejection reason, retained pending sibling and no reexecution. Agent Gateway plus normal reload makes pending cards reachable; old skeleton observations are not a blanket UI block. Stop stale controls/false Edited, standalone token-page routing and model/managed-QStash gaps remain. [Current 31-item ledger](current-results.md) supersedes historical status summaries without changing their evidence SHA. Final checker remains unused.
+
 [Review/CI record correction](review-scope-checkpoint.md): original P1/P2 were statically resolved at fixed 5b/C23fc, not independently tested or product accepted. L job108861551010 failed Topic duplicate parentId with PG23503 foreign key, not a unique-key fixture flake; separate PR20142 is outside Hook dependencies. Final acceptance checker remains unused.
 
 Latest r22: [custom contract and mixed Stop](cloud-custom-checkpoint.md) confirms that the real Marketplace producer does **not advertise cancel\_interaction**; the actual token request returns400 with unchanged DB/no claim. This is an unavailable action, not custom-handler retry coverage. Its supported mixed custom+binary Stop returns500→500→200→replay with receipts1→2→3→3, both members cancelled and no effects. Pending/final UI limits remain explicit.
