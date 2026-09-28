@@ -1,5 +1,7 @@
 # D integrated execution checkpoint — 2026-09-28
 
+Current supplement: [r17 Cloud Stop route repair](cloud-stop-route-checkpoint.md), served integration `196787eedd`. Source critical retry and ordinary replay are observed; token/full UI are not. Current D types are 1444/1449 (five added owner-test diagnostics), not a pass or zero delta. Earlier sections and tables below are historical observations under their stated SHAs; superseding r12/r15/r16/r17 evidence is linked in the [current index](README.md). Independent code review is exhausted; final acceptance checker remains unused.
+
 Latest notification-only supplement: [notification-checkpoint.md](notification-checkpoint.md), integration `a471e3876a3ecd25cb233108754e1be3f0ac2cc3`. The historical observations below retain their original SHA and open conditions.
 
 This is an in-progress handoff, not an acceptance verdict or published report.

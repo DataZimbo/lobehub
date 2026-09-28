@@ -1,5 +1,7 @@
 # Real Cloud source Review checkpoint (r14)
 
+Follow-up: [r17](cloud-stop-route-checkpoint.md) observes the repaired source-router retry on `196787eedd`. The failure below remains the immutable r14 result; old completed resolutions were not reopened. Token/full UI and other gaps are not inferred passed.
+
 This is partial product evidence, not final acceptance. D served private Cloud `69c38102cf1af86917737a96aa02829c1e2eadb4` with nested OSS integration `5b762f884d681e301f62a379ceb3a896382c6c08` (including C2 `3fc72ae6`, H/C1/S/K/L). D docs were `2090355f` during execution. Runtime Node was v24.21.0 and Bun 1.4.2. No installation or product patch was made.
 
 The private Cloud combination retains base `4b2a3272`, official ASR `49164e45`, const-only `2c604fc1`, and official Spin `f722d1c1`. The const-only private commit `4fe5a9fc` changes only `packages/business/const/src/index.ts`; its diff is byte-identical to that upstream file's six-line patch, with the upstream gitlink omitted. This is a partial upstream compatibility patch, not a full cherry-pick of `2c604fc1`. Cloud was not pushed and the user's Cloud checkout was not changed.

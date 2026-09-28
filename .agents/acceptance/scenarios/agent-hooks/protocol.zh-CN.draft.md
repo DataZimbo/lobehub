@@ -1,8 +1,8 @@
 # Agent Runtime HTTP Hook — 未发布集成草稿
 
-本稿对应集成基线 `cad39cb803a8dfd5830130fd58dc2c2038271609`（C2 + S + K + L），不是发布文档。当前实现已接入 allow/deny、完整参数替换与额外上下文，临时控制限制已移除。
+本稿对应集成基线 `196787eedd3578c895dc68c6af181bb16dedc842`（C2 + S + K + L），不是发布文档。当前实现已接入 allow/deny、完整参数替换与额外上下文，临时控制限制已移除。
 
-实际 HTTP / 设备检查正在进行。D 已观察到改写后的工具参数与 Web 审批卡不一致；现有 Cloud checkout 与集成 OSS 的编译兼容性也阻断了现代审批验证。下文审批 /card 描述是待修复验证的目标契约。真实模型推理和托管 QStash 投递尚缺测试凭据；不得将本稿视为验收通过或已验证的发布指南。
+已记录限定范围的真实 HTTP、设备、Web 重新审批和 Cloud source API 证据。有效参数卡片投影及缺源恢复已修复，当前集成已观察到 source Stop critical 重试成功。完整 token / 部分及混合审批 UI、成功模型推理和托管 QStash 投递仍未验通；取消工具仍错误显示 Edited 汇总。本稿未发布，描述实现契约，不代表完整产品验收通过。
 
 ## 从服务端代码注册
 
@@ -68,6 +68,8 @@ Runtime 模式与 webhook 传输方式是两个选择。`delivery:'fetch'` 为�
 `delivery:'fetch'` 在 local 和 queue Runtime 中均等待目标 HTTP 响应及响应体，或等待失败。每个 endpoint 的 `timeout` 独立生效，单位秒，默认 30。匹配的 endpoint 串行投递，因此慢 endpoint 的等待可能累加；该 timeout 不是整个事件的统一预算。选中的本地内存 handler 也会被等待，但 HTTP timeout 不限制 handler 的执行时间。
 
 `delivery:'qstash'` 等待 QStash publish 请求返回，不等待最终目标投递或目标响应。`timeout` 作为目标投递参数传给 QStash，不是 publish 调用的保证截止时间。publish 失败且允许 fetch fallback 时，还会等待一次受 endpoint timeout 限制的直接 HTTP 投递。所有通知响应仍被忽略，deny / 参数改写不能控制这些路径。压缩和子启动通知虽然等待投递，仍保留各自生产者对通知错误的隔离。
+
+通用 source / Review 路由将带匹配待投递 Stop 标记的 interrupted operation 视为尚未完成 dispatch，保留同一 resolution 重试，消费成功后才发布完成；其他 batch 的标记属于冲突。自定义取消重试只重试 Stop checkpoint，不重复 marketplace action。旧版本已错误完成的 resolution 不会被自动重新打开。
 
 ## 审批通知可靠性
 

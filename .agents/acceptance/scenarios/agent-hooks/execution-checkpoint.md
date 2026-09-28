@@ -1,5 +1,7 @@
 # Integrated execution checkpoint (not a final acceptance)
 
+Current supplement: [r17 Cloud Stop route repair](cloud-stop-route-checkpoint.md), served integration `196787eedd`. Source critical retry and ordinary replay are observed; token/full UI are not. Current D types are 1444/1449 (five added owner-test diagnostics), not a pass or zero delta. Earlier sections and tables below are historical observations under their stated SHAs; superseding r12/r15/r16/r17 evidence is linked in the [current index](README.md). Independent code review is exhausted; final acceptance checker remains unused.
+
 Latest r14 Cloud follow-up: [real source Review checkpoint](cloud-review-checkpoint.md) records durable pending Review creation, authenticated source read, successful ordinary Stop/replay, and a **newly observed generic-router critical Stop false-success/retry failure** on OSS `5b762f884d` + private Cloud `69c38102`. Reported to C2/coordinator; no final approval or product repair in D. Historical per-case observations below retain their stated SHA.
 
 Stop UI attribution update: C2's fixed base/current characterization confirms that stale pending cards after successful Stop and args-derived Edited/green-line summaries are pre-existing. They remain uncorrected and the complete Stop UI criterion is non-pass. See [stop-ui-attribution.md](stop-ui-attribution.md). This does not change historical evidence provenance or downgrade the current integration to the attribution's older SHA.

@@ -1,8 +1,8 @@
 # Agent Runtime HTTP hooks — unpublished integration draft
 
-This draft describes integration base `cad39cb803a8dfd5830130fd58dc2c2038271609` (C2 + S + K + L). It is not release documentation. The implementation accepts allow/deny, full input replacement and additional context; the temporary control guard has been removed.
+This draft describes integration base `196787eedd3578c895dc68c6af181bb16dedc842` (C2 + S + K + L). It is not release documentation. The implementation accepts allow/deny, full input replacement and additional context; the temporary control guard has been removed.
 
-Actual HTTP/device checks are in progress. D observed a mismatch between rewritten tool arguments and the Web approval card, and the available Cloud checkout currently fails to compile against the integrated OSS tree. Approval/card claims below are intended contract pending correction and verification. Real model inference and managed QStash delivery also lack test credentials. Do not interpret this draft as acceptance or publish it as verified guidance.
+Bounded real HTTP, device, Web reapproval and Cloud source-API evidence is recorded. Effective-argument card projection and missing-source recovery have been repaired; source Stop critical retries are observed on the current integration. Full token/partial/mixed UI, successful model inference and managed QStash delivery remain unverified, and cancelled tools still have an incorrect Edited summary. This unpublished draft describes the implemented contract, not complete product acceptance.
 
 ## Register hooks in server code
 
@@ -96,6 +96,8 @@ Only a `beforeToolCall` webhook with `responseHandling:'toolCall'` interprets th
 `permissionDecision` accepts `allow` or `deny`. It is optional. `updatedInput` requires `allow` and replaces the entire input object. `additionalContext` can be supplied without a permission decision and is limited to 10,000 characters. The response body is limited to 64 KiB. Empty successful responses or `{}` mean no decision. Invalid JSON, non-2xx responses, network failures, timeouts and unsupported response fields are protocol failures. The strict schema rejects `ask`, `defer`, whole-run stop and tool-output rewrites; these are not silently treated as supported.
 
 `timeout` is in seconds, default 30. `onError` defaults to `continue`; `block` is available only in control mode. A control hook cannot also have a handler, use QStash, filter event fields or override the payload. Notifications default to `responseHandling:'ignore'`, and their responses cannot change the run. URLs follow existing SSRF protection and private-network policy. Fetch delivery rejects redirects so destination changes cannot leak credentials.
+
+The shared generic source/Review router treats an interrupted operation with a matching pending Stop marker as incomplete dispatch. It preserves the same resolution for retry and publishes completion only after consumption; an unrelated batch marker is a conflict. Custom-cancellation retries repeat the Stop checkpoint, not the marketplace action. Resolutions incorrectly completed by an older version are not automatically reopened.
 
 ## Tool control and approvals — acceptance pending
 

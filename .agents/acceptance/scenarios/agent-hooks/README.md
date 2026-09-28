@@ -2,13 +2,13 @@
 
 Cloud-dependent blocked subcases and the minimal real entry are listed in [cloud-blocked-subcases.md](cloud-blocked-subcases.md). OSS evidence is retained separately; no generic token/UI pass is inferred from the compatibility fallback.
 
-Current status: preparation is complete and bounded product observations are recorded; the full 31-item acceptance is not complete. D draft PR #20137 targets its own integration-base, currently `1b9106f1982937214da7d7dda9ce6e81e443e716` (C2 b2e90a13, production unchanged from 507b37f9, fixed C1, S/K/L). See [integration-progress.md](integration-progress.md) and the execution/notification/Stop checkpoints for exact historical execution SHAs and remaining gaps. The initial phase-1 instructions below describe preparation provenance; they do not describe the currently integrated controls as unsupported. No final published acceptance or ready status is claimed.
+Current status: integration-base is `196787eedd3578c895dc68c6af181bb16dedc842` (C2 398d8a64, fixed C1/H/S/K/L ancestors). Draft PR #20137 still targets this own integration branch. Full 31-item acceptance is incomplete; no published pass or ready status is claimed.
 
-Latest owner reconciliation: [owner-regression-checkpoint.md](owner-regression-checkpoint.md), 1267 tests/lint passed; full types 1444/1444, identical diagnostics and still failed.
+Latest supplement: [Cloud Stop route repair](cloud-stop-route-checkpoint.md) observes real source-API critical 503→503→200→replay recovery and ordinary best-effort behavior. Token/card/partial/mixed coverage remains open, and cancelled tools still show incorrect Edited/+1. Five affected paths have 157 tests/lint passed; D full types are now **1444 base / 1449 current**, with five added test diagnostics reported to C2.
 
-Latest product supplement: [cold-card-checkpoint.md](cold-card-checkpoint.md). Cold B and fresh B→C reapproval/device execution were observed; an expired-source recovery path lost hooks and remains a reported failure.
+Reusable previous evidence includes [cold B/fresh B→C device flow](cold-card-checkpoint.md), [missing-source early rejection](missing-source-checkpoint.md), [ready continuation reuse](ready-reuse-checkpoint.md), and [transient source-read recovery](source-read-failure-checkpoint.md). Preserve each execution SHA and seeded-provider boundary. Earlier [fixed implementation checks](fixed-integration-checkpoint.md) and [owner reconciliation](owner-regression-checkpoint.md) remain historical quality evidence, not the current type result.
 
-Complete fixed implementation checks: [fixed-integration-checkpoint.md](fixed-integration-checkpoint.md), all 84 diff paths covered in two explicit commands; 1301 and 357 tests passed respectively, lint clean, full types still failed with identical base/current diagnostics.
+Independent code review has completed and its allocation is exhausted; no automatic new review pass is inferred from later repairs. The one final acceptance evidence check remains unused. Test model and managed QStash configuration are still missing. The initial phase-1 instructions below describe preparation provenance, not today's integrated feature support.
 
 ## Files and finishing criteria
 
