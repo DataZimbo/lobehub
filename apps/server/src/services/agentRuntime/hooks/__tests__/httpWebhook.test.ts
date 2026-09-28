@@ -1,3 +1,6 @@
+import { inspect } from 'node:util';
+
+import { QstashError } from '@upstash/qstash';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { deliverWebhook, executeToolCallWebhook, resolveWebhookHeaders } from '../httpWebhook';
@@ -171,6 +174,51 @@ describe('HTTP hook primitive', () => {
     );
     expect(safeFetch).toHaveBeenCalledTimes(1);
     expect(publish).not.toHaveBeenCalled();
+  });
+  it('preserves the missing-token configuration diagnosis without unsigned fallback', async () => {
+    vi.stubEnv('QSTASH_TOKEN', undefined);
+    await expect(
+      deliverWebhook({ url: config.url, delivery: 'qstash', fallback: 'none' }, {}),
+    ).rejects.toMatchObject({
+      code: 'configuration',
+      message: expect.stringContaining('QSTASH_TOKEN not available'),
+    });
+    expect(safeFetch).not.toHaveBeenCalled();
+  });
+  it.each([401, 429, 503])(
+    'preserves QStash HTTP %i without exposing SDK response data',
+    async (status) => {
+      vi.stubEnv('QSTASH_TOKEN', 'private-token');
+      const sdkError = new QstashError('private-response private-token private-header', status);
+      Object.assign(sdkError, { headers: { Authorization: 'private-header' } });
+      publish.mockRejectedValue(sdkError);
+      const error = await deliverWebhook(
+        { url: config.url, delivery: 'qstash', fallback: 'none' },
+        {},
+      ).catch((error: unknown) => error);
+      expect(error).toMatchObject({
+        code: 'http_error',
+        status,
+        message: expect.stringContaining(`QStash publish failed (HTTP ${status})`),
+      });
+      expect(inspect(error)).not.toMatch(/private-response|private-token|private-header/);
+      expect(safeFetch).not.toHaveBeenCalled();
+    },
+  );
+  it('logs the QStash failure even when fetch fallback succeeds', async () => {
+    vi.stubEnv('QSTASH_TOKEN', 'private-token');
+    publish.mockRejectedValue(new QstashError('private-response', 503));
+    safeFetch.mockResolvedValue(new Response(null, { status: 204 }));
+    const logger = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(
+      deliverWebhook({ url: config.url, delivery: 'qstash' }, {}),
+    ).resolves.toBeUndefined();
+    expect(logger).toHaveBeenCalledWith(
+      '[HookDispatcher] QStash delivery failed, falling back to fetch',
+      expect.objectContaining({ code: 'http_error', status: 503 }),
+    );
+    expect(inspect(logger.mock.calls)).not.toContain('private-response');
+    expect(safeFetch).toHaveBeenCalledTimes(1);
   });
 });
 
