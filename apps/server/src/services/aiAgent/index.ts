@@ -996,6 +996,19 @@ export class AiAgentService {
     );
     if (reusedContinuation) return reusedContinuation;
 
+    // Validate the source before creating successor messages or discovering
+    // tools. Missing/expired state cannot prove an empty control configuration.
+    // Ready deterministic reuse above owns its own saved hooks and need not
+    // reload the older source. Keep this snapshot for startup so it is read once.
+    const approvalSourceState = approvalSourceOperationId
+      ? await this.agentRuntimeService.loadInterventionContinuationState(approvalSourceOperationId)
+      : null;
+    if (approvalSourceOperationId && !approvalSourceState) {
+      throw new Error(
+        `Approval source runtime state is missing or expired: ${approvalSourceOperationId}`,
+      );
+    }
+
     // Stage 3 + shared turn setup — topic creation/reuse (with the pinned
     // model), device-access policy, hetero detection, attachment ingestion, and
     // the persisted user/assistant rows (see `pipeline/turnSetup`).
@@ -1334,6 +1347,7 @@ export class AiAgentService {
         approvalClaim,
         approvalHookDecisions,
         approvalSourceOperationId,
+        approvalSourceState,
         approvalSourceToolMessageIds,
         autoStart,
         onOperationCreated: params.onOperationCreated,

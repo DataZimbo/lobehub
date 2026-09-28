@@ -1,4 +1,5 @@
 import {
+  type AgentState,
   buildAfterHumanInterventionEvent,
   buildHumanInterventionHookContext,
 } from '@lobechat/agent-runtime';
@@ -33,6 +34,8 @@ export interface StartOperationInput {
   approvalClaim: ApprovalClaimState;
   approvalHookDecisions?: ClaimedApprovalResume['approvalHookDecisions'];
   approvalSourceOperationId?: string;
+  /** Validated before turn setup; do not reload a source that may expire meanwhile. */
+  approvalSourceState: AgentState | null;
   approvalSourceToolMessageIds: string[];
   autoStart: boolean;
   botContext?: InternalExecAgentParams['botContext'];
@@ -101,6 +104,7 @@ export const startOperation = async (
   const {
     approvalClaim,
     approvalSourceOperationId,
+    approvalSourceState: sourceState,
     approvalSourceToolMessageIds,
     autoStart,
     botContext,
@@ -151,19 +155,6 @@ export const startOperation = async (
   // Wrap in try-catch to handle operation startup failures (e.g., QStash unavailable)
   // If createOperation fails, we still have valid messages that need error info
   try {
-    const sourceState = approvalSourceOperationId
-      ? await deps.agentRuntimeService.loadInterventionContinuationState(approvalSourceOperationId)
-      : null;
-    // A missing (for example TTL-expired) source cannot prove that no controls
-    // were configured. Never recreate an approval continuation with empty hooks
-    // and execute its original input under a different policy. Ready deterministic
-    // continuations have already returned through the reuse path with their own
-    // persisted hooks; only a new/rebuilt continuation needs the source here.
-    if (approvalSourceOperationId && !sourceState) {
-      throw new Error(
-        `Approval source runtime state is missing or expired: ${approvalSourceOperationId}`,
-      );
-    }
     const continuationHooks = approvalSourceOperationId
       ? hookDispatcher.getContinuationHooks(approvalSourceOperationId, sourceState?.host?.hooks)
       : [];
