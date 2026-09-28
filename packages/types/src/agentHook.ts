@@ -19,7 +19,8 @@ export const agentHookTypeSchema = z.enum([
   'onCallAgentError',
 ]);
 
-const patternSchema = z.string().refine((pattern) => {
+/** Regex against `${identifier}/${apiName}`; omitted, empty or * matches every tool. */
+export const agentHookMatcherSchema = z.string().refine((pattern) => {
   if (!pattern || pattern === '*') return true;
   try {
     new RegExp(pattern);
@@ -28,12 +29,6 @@ const patternSchema = z.string().refine((pattern) => {
     return false;
   }
 }, 'Invalid hook matcher regular expression');
-
-/** Both patterns must match. An omitted, empty or * pattern matches everything. */
-export const agentHookMatcherSchema = z.strictObject({
-  apiName: patternSchema.optional(),
-  identifier: patternSchema.optional(),
-});
 
 /** Persist templates only; environment values are resolved immediately before sending. */
 export const agentHookWebhookSchema = z
@@ -92,7 +87,7 @@ export const serializedAgentHookSchema = z
   })
   .superRefine((hook, ctx) => {
     if (
-      hook.matcher &&
+      hook.matcher !== undefined &&
       !['beforeToolCall', 'afterToolCall', 'onToolCallError'].includes(hook.type)
     ) {
       ctx.addIssue({ code: 'custom', message: 'Matchers are only supported for tool events' });
