@@ -7,6 +7,7 @@ import {
   MarkdownPlugin,
   moment,
 } from '@lobehub/editor';
+import { $getRoot, type ElementNode, type TextNode } from 'lexical';
 import { describe, expect, it } from 'vitest';
 
 import { EditorRuntime } from '../EditorRuntime';
@@ -38,7 +39,16 @@ const setup = async (markdown: string) => {
     return { diff, result };
   };
 
-  return { apply, markdownOf, xml };
+  const selectBlock = (index: number) =>
+    (editor as any).getLexicalEditor().update(
+      () => {
+        const text = ($getRoot().getChildren()[index] as ElementNode).getFirstChild() as TextNode;
+        text.select(0, text.getTextContentSize());
+      },
+      { discrete: true },
+    );
+
+  return { apply, markdownOf, selectBlock, xml };
 };
 
 const topLevelIds = (xml: string) =>
@@ -145,6 +155,16 @@ describe('diffLiteXMLBlocks against a real editor', () => {
     expect(page.xml()).toContain('AT&T says a');
     expect(page.xml()).toContain('<b and c>');
     expect(page.xml()).toContain('d TAIL');
+  });
+
+  it('edits a block that the user currently has selected', async () => {
+    const page = await setup('para one\n\npara two\n');
+    page.selectBlock(1);
+
+    const { result } = await page.apply((xml) => xml.replace('para two', 'para TWO'));
+
+    expect(result.successCount).toBe(result.totalCount);
+    expect(page.markdownOf()).toBe('para one\n\npara TWO');
   });
 
   it('edits again while an earlier edit is still pending review', async () => {

@@ -7,6 +7,7 @@ import {
   LITEXML_REMOVE_COMMAND,
 } from '@lobehub/editor/litexml-commands';
 import debug from 'debug';
+import { $setSelection, type LexicalEditor } from 'lexical';
 
 import {
   describeLiteXMLEditStep,
@@ -39,7 +40,7 @@ const nextMicrotask = () => new Promise<void>((resolve) => queueMicrotask(resolv
 interface InspectableEditor {
   dataTypeMap?: Map<string, unknown> | Record<string, unknown>;
   editor?: unknown;
-  getLexicalEditor?: () => unknown | null;
+  getLexicalEditor?: () => LexicalEditor | null;
   plugins?: unknown[];
   pluginsInstances?: unknown[];
 }
@@ -446,6 +447,13 @@ export class EditorRuntime {
     if (!hasDataSource(editor as InspectableEditor, 'litexml')) {
       throw new Error('modifyNodes failed: LiteXML data source is not ready.');
     }
+
+    // A selection over a node makes the LiteXML diff commands reject edits to
+    // it ("did not change the page"), e.g. the paragraph a user selected for
+    // "Ask Lobe AI". The agent edits by node id, so drop the selection first.
+    (editor as InspectableEditor)
+      .getLexicalEditor?.()
+      ?.update(() => $setSelection(null), { discrete: true });
 
     const results: ModifyOperationResult[] = operations.map((op) => ({
       action: op.action,
