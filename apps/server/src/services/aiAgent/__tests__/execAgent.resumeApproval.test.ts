@@ -1330,8 +1330,32 @@ describe('AiAgentService.stopPendingApproval', () => {
         toolMessageIds: ['tool-msg-1', 'tool-msg-2'],
         topicId: 'topic-1',
       };
+      const expectForeignRequestsRejected = async () => {
+        const before = {
+          claims: mockResolveHumanApproval.mock.calls.length,
+          completions: mockRecordCompletion.mock.calls.length,
+          consumes: mockCompleteStopHookNotification.mock.calls.length,
+          deliveries: hookFetch.mock.calls.length,
+          pendingStopHookBatchId,
+        };
+        for (const override of [
+          { approvalResolutionRequestId: 'another-resolution' },
+          { approvalResolutionRequestId: undefined },
+          { batchId: 'another-batch' },
+          { toolMessageIds: ['tool-msg-1'] },
+        ]) {
+          await expect(service.stopPendingApproval({ ...params, ...override })).rejects.toThrow();
+        }
+        expect(mockResolveHumanApproval).toHaveBeenCalledTimes(before.claims);
+        expect(mockRecordCompletion).toHaveBeenCalledTimes(before.completions);
+        expect(mockCompleteStopHookNotification).toHaveBeenCalledTimes(before.consumes);
+        expect(hookFetch).toHaveBeenCalledTimes(before.deliveries);
+        expect(pendingStopHookBatchId).toBe(before.pendingStopHookBatchId);
+      };
       if (fallback === 'none') {
         await expect(service.stopPendingApproval(params)).rejects.toThrow();
+        expect(pendingStopHookBatchId).toBe('batch-1');
+        await expectForeignRequestsRejected();
         // The same request must not report success while delivery still fails.
         await expect(service.stopPendingApproval(params)).rejects.toThrow();
         expect(mockCompleteStopHookNotification).not.toHaveBeenCalled();
@@ -1352,6 +1376,8 @@ describe('AiAgentService.stopPendingApproval', () => {
         await expect(service.stopPendingApproval(params)).resolves.toMatchObject({ success: true });
         expect(hookFetch).toHaveBeenCalledTimes(1);
       }
+      expect(pendingStopHookBatchId).toBeUndefined();
+      await expectForeignRequestsRejected();
       const delivered = hookFetch.mock.calls.length;
       await service.stopPendingApproval(params);
       expect(hookFetch).toHaveBeenCalledTimes(delivered);
