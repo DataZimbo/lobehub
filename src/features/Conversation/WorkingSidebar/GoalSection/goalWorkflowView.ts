@@ -1,3 +1,6 @@
+import type { GoalStatus } from '@lobechat/const/goal';
+
+import type { OperationGoal } from '@/features/Conversation/Messages/GoalTaskCard/deriveOperationGoals';
 import type {
   GoalStep,
   GoalTaskPhase,
@@ -12,11 +15,15 @@ export const GOAL_WORKFLOW_STAGE_KEYS = [
 ] as const;
 
 /**
- * Which rail stage a lifecycle phase lights up. Sub-states that still mean
- * "work is happening" (waiting on a person, repairing, paused) stay on the
- * running stage — the phase pill next to the header carries the nuance.
+ * Which rail stage a lifecycle phase lights up. A goal still `planning` sits on
+ * the Plan stage whatever its phase says (the phase folds planning into
+ * running). Sub-states that still mean "work is happening" (waiting on a
+ * person, repairing, paused) stay on the running stage — the phase pill next to
+ * the header carries the nuance.
  */
-export const goalPhaseToStageIndex = (phase: GoalTaskPhase): number => {
+export const goalPhaseToStageIndex = (phase: GoalTaskPhase, status?: GoalStatus): number => {
+  if (status === 'planning') return 0;
+
   switch (phase) {
     case 'verifying': {
       return 2;
@@ -81,3 +88,24 @@ export const sliceVisibleWorkflowRows = (
   rows: GoalWorkflowRow[],
   expanded: boolean,
 ): GoalWorkflowRow[] => (expanded ? rows : rows.slice(0, MAX_VISIBLE_WORKFLOW_ROWS));
+
+/**
+ * Every goal the conversation created: the ones derived from its messages
+ * (builtin `createGoal` results, `lh goal create` shell output) plus the goal
+ * rows linked to the topic — a CLI agent's `lh goal create --conversation` can
+ * leave no parseable tool result behind. Message-derived goals keep their
+ * position and richer metadata; persisted-only goals follow, deduped by id.
+ */
+export const mergeTopicGoals = (
+  derived: OperationGoal[],
+  persisted: { goal: { id: string; title?: string | null } }[] = [],
+): OperationGoal[] => {
+  const seen = new Set(derived.map((goal) => goal.goalId));
+  const linked = persisted.flatMap(({ goal }) => {
+    if (seen.has(goal.id)) return [];
+    seen.add(goal.id);
+    return [{ criteriaCount: 0, goalId: goal.id, name: goal.title?.trim() || goal.id }];
+  });
+
+  return [...derived, ...linked];
+};

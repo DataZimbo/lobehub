@@ -1,7 +1,7 @@
 'use client';
 
 import { Flexbox, Icon } from '@lobehub/ui';
-import { Button } from '@lobehub/ui/base-ui';
+import { Button, Skeleton } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar, cx } from 'antd-style';
 import {
   ArrowUpRight,
@@ -16,6 +16,7 @@ import {
 import { type KeyboardEvent, memo, useCallback, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import AsyncError from '@/components/AsyncError';
 import AssigneeProfileAvatar from '@/features/AgentGoals/ProcessControl/AssigneeProfileAvatar';
 import { useChatStore } from '@/store/chat';
 
@@ -146,12 +147,21 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
       outline-offset: -2px;
     }
   `,
+  loading: css`
+    padding-block: 4px 8px;
+    padding-inline: 10px;
+  `,
   sectionTitle: css`
-    font-size: 10.5px;
-    font-weight: 600;
-    color: ${cssVar.colorTextSecondary};
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    overflow: hidden;
+    flex: 1;
+
+    min-width: 0;
+
+    font-size: 13px;
+    font-weight: 500;
+    color: ${cssVar.colorText};
+    text-overflow: ellipsis;
+    white-space: nowrap;
   `,
   stageDot: css`
     flex-shrink: 0;
@@ -276,6 +286,9 @@ const GoalWorkflowCard = memo<{ goal: GoalWorkflowView }>(({ goal }) => {
   const hiddenCount = goal.rows.length - rows.length;
   const percent =
     goal.summary.total > 0 ? Math.round((goal.summary.done / goal.summary.total) * 100) : 0;
+  // Without a snapshot there is no honest progress to show — no 0/0 placeholder.
+  const hasSnapshot = !goal.loading && !goal.error;
+  const title = goal.title || t('workingPanel.goal.title');
 
   return (
     <div>
@@ -294,13 +307,17 @@ const GoalWorkflowCard = memo<{ goal: GoalWorkflowView }>(({ goal }) => {
       >
         <Flexbox horizontal align={'center'} gap={8} style={{ flex: 1, minWidth: 0 }}>
           <Icon icon={Workflow} size={14} style={{ color: cssVar.colorTextSecondary }} />
-          <span className={styles.sectionTitle}>{t('workingPanel.goal.title')}</span>
-          {goal.phase !== 'running' && (
+          <span className={styles.sectionTitle} title={title}>
+            {title}
+          </span>
+          {hasSnapshot && goal.phase !== 'running' && (
             <span className={styles.count}>{t(`goalTask.status.${goal.phase}`)}</span>
           )}
-          <span className={styles.count}>
-            {goal.summary.done}/{goal.summary.total}
-          </span>
+          {hasSnapshot && (
+            <span className={styles.count}>
+              {goal.summary.done}/{goal.summary.total}
+            </span>
+          )}
         </Flexbox>
         <Icon
           icon={collapsed ? ChevronDown : ChevronUp}
@@ -310,121 +327,138 @@ const GoalWorkflowCard = memo<{ goal: GoalWorkflowView }>(({ goal }) => {
       </Flexbox>
 
       <div className={cx(collapsed && styles.collapsed)} id={bodyId}>
-        <Flexbox horizontal align={'center'} className={styles.stageRail}>
-          {GOAL_WORKFLOW_STAGE_KEYS.map((key, index) => {
-            const state =
-              index < goal.stageIndex ? 'done' : index === goal.stageIndex ? 'current' : 'todo';
-            return (
-              <Flexbox horizontal align={'center'} key={key} style={{ flex: 1, minWidth: 0 }}>
-                <Flexbox horizontal align={'center'} gap={5}>
-                  <div
-                    className={cx(
-                      styles.stageDot,
-                      state === 'done' && styles.stageDotDone,
-                      state === 'current' && styles.stageDotCurrent,
-                    )}
-                  />
-                  <span
-                    className={cx(styles.stageLabel, state !== 'todo' && styles.stageLabelActive)}
-                  >
-                    {t(key)}
-                  </span>
-                </Flexbox>
-                {index < GOAL_WORKFLOW_STAGE_KEYS.length - 1 && (
-                  <div
-                    className={cx(
-                      styles.stageLine,
-                      index < goal.stageIndex && styles.stageLineDone,
-                    )}
-                  />
-                )}
-              </Flexbox>
-            );
-          })}
-        </Flexbox>
-
-        {goal.pendingDecisions > 0 && (
-          <Flexbox
-            horizontal
-            align={'center'}
-            className={styles.decisionRow}
-            gap={6}
-            justify={'space-between'}
-            role={'button'}
-            tabIndex={0}
-            onClick={open}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return;
-              event.preventDefault();
-              open();
-            }}
-          >
-            {t('workingPanel.goal.decision', { count: goal.pendingDecisions })}
-            <ArrowUpRight size={13} />
+        {goal.error ? (
+          <div className={styles.loading}>
+            <AsyncError error={goal.error} variant={'inline'} onRetry={goal.retry} />
+          </div>
+        ) : goal.loading ? (
+          <Flexbox className={styles.loading} data-testid={'goal-workflow-loading'} gap={8}>
+            <Skeleton height={12} radius={4} />
+            <Skeleton height={28} radius={6} />
+            <Skeleton height={28} radius={6} />
           </Flexbox>
-        )}
-
-        <div style={{ paddingInline: 4 }}>
-          {rows.map((row) => (
-            <WorkflowRow key={row.id} row={row} onOpen={open} />
-          ))}
-          {hiddenCount > 0 ? (
-            <Flexbox
-              horizontal
-              align={'center'}
-              className={styles.moreRow}
-              gap={4}
-              role={'button'}
-              tabIndex={0}
-              onClick={() => setRowsExpanded(true)}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter' && event.key !== ' ') return;
-                event.preventDefault();
-                setRowsExpanded(true);
-              }}
-            >
-              {t('workingPanel.goal.more', { count: hiddenCount })}
-              <ChevronDown size={13} />
+        ) : (
+          <>
+            <Flexbox horizontal align={'center'} className={styles.stageRail}>
+              {GOAL_WORKFLOW_STAGE_KEYS.map((key, index) => {
+                const state =
+                  index < goal.stageIndex ? 'done' : index === goal.stageIndex ? 'current' : 'todo';
+                return (
+                  <Flexbox horizontal align={'center'} key={key} style={{ flex: 1, minWidth: 0 }}>
+                    <Flexbox horizontal align={'center'} gap={5}>
+                      <div
+                        className={cx(
+                          styles.stageDot,
+                          state === 'done' && styles.stageDotDone,
+                          state === 'current' && styles.stageDotCurrent,
+                        )}
+                      />
+                      <span
+                        className={cx(
+                          styles.stageLabel,
+                          state !== 'todo' && styles.stageLabelActive,
+                        )}
+                      >
+                        {t(key)}
+                      </span>
+                    </Flexbox>
+                    {index < GOAL_WORKFLOW_STAGE_KEYS.length - 1 && (
+                      <div
+                        className={cx(
+                          styles.stageLine,
+                          index < goal.stageIndex && styles.stageLineDone,
+                        )}
+                      />
+                    )}
+                  </Flexbox>
+                );
+              })}
             </Flexbox>
-          ) : (
-            rowsExpanded &&
-            goal.rows.length > MAX_VISIBLE_WORKFLOW_ROWS && (
+
+            {goal.pendingDecisions > 0 && (
               <Flexbox
                 horizontal
                 align={'center'}
-                className={styles.lessRow}
+                className={styles.decisionRow}
+                gap={6}
+                justify={'space-between'}
                 role={'button'}
                 tabIndex={0}
-                onClick={() => setRowsExpanded(false)}
+                onClick={open}
                 onKeyDown={(event) => {
                   if (event.key !== 'Enter' && event.key !== ' ') return;
                   event.preventDefault();
-                  setRowsExpanded(false);
+                  open();
                 }}
               >
-                {t('workingPanel.goal.collapse')}
+                {t('workingPanel.goal.decision', { count: goal.pendingDecisions })}
+                <ArrowUpRight size={13} />
               </Flexbox>
-            )
-          )}
-        </div>
+            )}
 
-        <Flexbox
-          horizontal
-          align={'center'}
-          className={styles.footer}
-          gap={8}
-          style={{ paddingInline: 10 }}
-        >
-          <div className={styles.progress}>
-            <div className={styles.progressFill} style={{ width: `${percent}%` }} />
-          </div>
-          <span className={styles.count}>
-            {goal.summary.done}/{goal.summary.total}
-          </span>
-          <Button outdent={'end'} size={'small'} type={'text'} onClick={open}>
-            {t('workingPanel.goal.openPortal')}
-          </Button>
-        </Flexbox>
+            <div style={{ paddingInline: 4 }}>
+              {rows.map((row) => (
+                <WorkflowRow key={row.id} row={row} onOpen={open} />
+              ))}
+              {hiddenCount > 0 ? (
+                <Flexbox
+                  horizontal
+                  align={'center'}
+                  className={styles.moreRow}
+                  gap={4}
+                  role={'button'}
+                  tabIndex={0}
+                  onClick={() => setRowsExpanded(true)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    setRowsExpanded(true);
+                  }}
+                >
+                  {t('workingPanel.goal.more', { count: hiddenCount })}
+                  <ChevronDown size={13} />
+                </Flexbox>
+              ) : (
+                rowsExpanded &&
+                goal.rows.length > MAX_VISIBLE_WORKFLOW_ROWS && (
+                  <Flexbox
+                    horizontal
+                    align={'center'}
+                    className={styles.lessRow}
+                    role={'button'}
+                    tabIndex={0}
+                    onClick={() => setRowsExpanded(false)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      setRowsExpanded(false);
+                    }}
+                  >
+                    {t('workingPanel.goal.collapse')}
+                  </Flexbox>
+                )
+              )}
+            </div>
+
+            <Flexbox
+              horizontal
+              align={'center'}
+              className={styles.footer}
+              gap={8}
+              style={{ paddingInline: 10 }}
+            >
+              <div className={styles.progress}>
+                <div className={styles.progressFill} style={{ width: `${percent}%` }} />
+              </div>
+              <span className={styles.count}>
+                {goal.summary.done}/{goal.summary.total}
+              </span>
+              <Button outdent={'end'} size={'small'} type={'text'} onClick={open}>
+                {t('workingPanel.goal.openPortal')}
+              </Button>
+            </Flexbox>
+          </>
+        )}
       </div>
     </div>
   );

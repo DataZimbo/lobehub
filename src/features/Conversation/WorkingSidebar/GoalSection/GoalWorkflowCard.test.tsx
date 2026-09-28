@@ -92,4 +92,41 @@ describe('GoalWorkflowCard', () => {
     render(<GoalWorkflowCard goal={{ ...baseView, phase: 'waiting' }} />);
     expect(screen.getByText('goalTask.status.waiting')).toBeInTheDocument();
   });
+
+  it('names the goal in the header so several cards stay distinguishable', () => {
+    render(<GoalWorkflowCard goal={baseView} />);
+    expect(screen.getByText('凭证委托场景全景')).toBeInTheDocument();
+  });
+
+  it('shows a loading placeholder instead of a fake 0/0 before the graph arrives', () => {
+    render(
+      <GoalWorkflowCard
+        goal={{ ...baseView, loading: true, rows: [], summary: { done: 0, running: 0, total: 0 } }}
+      />,
+    );
+
+    expect(screen.getByTestId('goal-workflow-loading')).toBeInTheDocument();
+    expect(screen.queryByText('0/0')).not.toBeInTheDocument();
+    expect(screen.queryByText('workingPanel.goal.stage.planning')).not.toBeInTheDocument();
+  });
+
+  it('shows a retryable error when the graph request fails', async () => {
+    const user = userEvent.setup();
+    const retry = vi.fn();
+    render(
+      <GoalWorkflowCard
+        goal={{
+          ...baseView,
+          error: new Error('boom'),
+          retry,
+          rows: [],
+          summary: { done: 0, running: 0, total: 0 },
+        }}
+      />,
+    );
+
+    expect(screen.queryByText('0/0')).not.toBeInTheDocument();
+    await user.click(screen.getByText('error.retry'));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
 });
