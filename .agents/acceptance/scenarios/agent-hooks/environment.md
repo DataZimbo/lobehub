@@ -1,22 +1,24 @@
 # Environment preflight — 2026-09-28
 
+**Historical first-pass snapshot. Continued investigation resolved the dependency/service/auth gaps below. Use [environment-ready.md](environment-ready.md) for current state, provenance, remaining gaps and restart commands.**
+
 Observed in D's own worktree; no shared services changed.
 
-| Item | Observed | Gap / next action |
-| --- | --- | --- |
-| Worktree | independent `c830e366…`; `feat/agent-hook-integration-docs`, F `66af6210` | coordinator's final integrated base required for product execution |
-| Runtime | Bun 1.4.2, pnpm 12.4.1; Node shim unselected by default | use process-local `ASDF_NODEJS_VERSION=24.21.0`, no global config change |
-| Dependencies | no root or standalone CLI node_modules, no root `.env` | install isolated workspace graph and standalone CLI if source CLI used; don't symlink another live worktree |
-| CLI | global 0.0.55 lacks doctor; cached `pnpm --package=@lobehub/cli@0.0.59 dlx lh` doctor works | cached CLI usable for offline diagnosis without replacing global binary |
-| Login | stored login locally decoded issuer is production OIDC, nonexpired; personal-scope read-only acceptance list succeeded | production read access available; isolated local seeded login still absent; no interactive login or profile change |
-| DB | Docker reachable; running Postgres containers belong to TITU only | do not use/modify them; create D-specific DB/Redis using existing helper overrides |
-| Services | resolved 3010/9876 and probed 5433/6380/8080/29000 all connection refused | no LobeHub app/DB/Redis/QStash/S3 health; separate container isolation and dynamic app ports required |
-| Env | DATABASE_URL/REDIS_URL/QSTASH_TOKEN/QSTASH_URL and checked OpenAI/Anthropic keys absent from this process | no known configured real LLM/QStash target; absence here does not prove user has no credentials elsewhere |
-| Device | production device list read succeeded: one device, online:false | no online device now; no local app/gateway pairing for this worktree; do not treat production enrollment as local forwarding readiness |
-| Browser | agent-browser absent on PATH; Chrome CDP listener exists and is user-owned | install/use dedicated automation session after local auth; do not take over user's CDP/browser |
-| Receiver | 14 response fixtures, 16 hook factory; initial 12-fixture timeout/redaction smoke passed; revised boundary fixtures rechecked in final smoke | this is harness-only; full execAgent import/run is blocked by dependencies and final baseline |
-| Provider catalogue | authenticated production list readable: 86 catalogue entries, 2 enabled | no inference performed and no isolated test key established; enabled is not proof of model availability |
-| Existing helpers | init-dev-env, setup-auth, app-probe, llm-stub, gateway helpers available | reuse; stub is not real LLM evidence; source CLI install separate from workspace |
+| Item               | Observed                                                                                                                                     | Gap / next action                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Worktree           | independent `c830e366…`; `feat/agent-hook-integration-docs`, F `66af6210`                                                                    | coordinator's final integrated base required for product execution                                                                     |
+| Runtime            | Bun 1.4.2, pnpm 12.4.1; Node shim unselected by default                                                                                      | use process-local `ASDF_NODEJS_VERSION=24.21.0`, no global config change                                                               |
+| Dependencies       | no root or standalone CLI node\_modules, no root `.env`                                                                                      | install isolated workspace graph and standalone CLI if source CLI used; don't symlink another live worktree                            |
+| CLI                | global 0.0.55 lacks doctor; cached `pnpm --package=@lobehub/cli@0.0.59 dlx lh` doctor works                                                  | cached CLI usable for offline diagnosis without replacing global binary                                                                |
+| Login              | stored login locally decoded issuer is production OIDC, nonexpired; personal-scope read-only acceptance list succeeded                       | production read access available; isolated local seeded login still absent; no interactive login or profile change                     |
+| DB                 | Docker reachable; running Postgres containers belong to TITU only                                                                            | do not use/modify them; create D-specific DB/Redis using existing helper overrides                                                     |
+| Services           | resolved 3010/9876 and probed 5433/6380/8080/29000 all connection refused                                                                    | no LobeHub app/DB/Redis/QStash/S3 health; separate container isolation and dynamic app ports required                                  |
+| Env                | DATABASE\_URL/REDIS\_URL/QSTASH\_TOKEN/QSTASH\_URL and checked OpenAI/Anthropic keys absent from this process                                | no known configured real LLM/QStash target; absence here does not prove user has no credentials elsewhere                              |
+| Device             | production device list read succeeded: one device, online:false                                                                              | no online device now; no local app/gateway pairing for this worktree; do not treat production enrollment as local forwarding readiness |
+| Browser            | agent-browser absent on PATH; Chrome CDP listener exists and is user-owned                                                                   | install/use dedicated automation session after local auth; do not take over user's CDP/browser                                         |
+| Receiver           | 14 response fixtures, 16 hook factory; initial 12-fixture timeout/redaction smoke passed; revised boundary fixtures rechecked in final smoke | this is harness-only; full execAgent import/run is blocked by dependencies and final baseline                                          |
+| Provider catalogue | authenticated production list readable: 86 catalogue entries, 2 enabled                                                                      | no inference performed and no isolated test key established; enabled is not proof of model availability                                |
+| Existing helpers   | init-dev-env, setup-auth, app-probe, llm-stub, gateway helpers available                                                                     | reuse; stub is not real LLM evidence; source CLI install separate from workspace                                                       |
 
 ## Commands
 

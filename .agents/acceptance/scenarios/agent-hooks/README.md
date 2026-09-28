@@ -28,17 +28,17 @@ Receiver binds loopback to an OS-allocated port and prints its URL. Each log pat
 
 `rewrite` currently returns `{path:'fixture/effective.txt'}` as the **whole** new tool input. Seed a compatible `d-fixture` tool before using it. Adjust fixture input to the actual final tool schema, not product code. `late-allow` waits 1200 ms; the default harness control timeout is 200 ms. For C07 set JSON `"scenario":"late-allow","timeout":5`, wait for receiver arrival, press Stop before 1200 ms and retain observation beyond that time. Compare with the same 5-second timeout and no Stop. This separates cancellation from timeout. Set `"notificationResponse":"deny"` to prove notifications ignore control-shaped responses. `size-boundary` and `oversized` are otherwise-valid JSON responses of exactly 65536/65537 UTF-8 bytes; distinguish the size-specific error from malformed JSON.
 
-## Final runtime entry (blocked until final base and isolated dependencies/services)
+## Final runtime entry (wait for final base and actual provider/device prerequisites)
 
 `harness.ts` calls the actual `AiAgentService.execAgent`; it does not replace the Runtime or dispatcher. A minimal JSON input, in an ignored directory, is:
 
 ```json
 {
-  "userId": "<seeded-local-user>",
-  "receiver": "http://127.0.0.1:<printed-port>",
+  "onError": "block",
   "params": { "agentId": "<seeded-agent>", "prompt": "Use the synthetic d-fixture tool once" },
+  "receiver": "http://127.0.0.1:<printed-port>",
   "scenario": "deny",
-  "onError": "block"
+  "userId": "<seeded-local-user>"
 }
 ```
 
@@ -47,6 +47,7 @@ Run in an isolated environment loaded through the existing adapter; never point 
 ```bash
 (
   unset LOBEHUB_JWT LOBEHUB_CLI_API_KEY LOBE_API_KEY LOBEHUB_WORKSPACE_ID
+  source .records/env/hooks-d-isolation.env
   eval "$(.agents/acceptance/scripts/init-dev-env.sh env)"
   AGENT_RUNTIME_MODE=local bun .agents/acceptance/scenarios/agent-hooks/harness.ts .acceptances/hooks-d-phase1/run.json
 )
@@ -55,6 +56,8 @@ Run in an isolated environment loaded through the existing adapter; never point 
 Repeat with `AGENT_RUNTIME_MODE=queue` and a healthy QStash + real callback worker. `delivery:'qstash'` selects QStash **notifications**; controls always fetch. The harness returns after `execAgent` returns, not after completion. Observe the returned run through receiver/persisted state and real Web UI. It deliberately does not print `ExecAgentResult`, which may carry a gateway token. The final driver needs bounded state observation for completion and must preserve its local runtime process until terminal state; this is an entry harness, not an autonomous acceptance runner.
 
 For worker replacement use two owned app processes sharing only the isolated test DB/Redis, and a recorded queue barrier. Do not simulate the worker swap with a second dispatcher in one process. Do not use the production debug proxy to claim backend branch coverage.
+
+The continued preflight has now prepared D-owned dependencies, migrated Postgres/Redis, local QStash and S3, and a seeded CLI login. See `environment.md` for current state and restart commands. This does not enable final Hook execution before the coordinator supplies the integrated base. The initial missing-eslint checkpoint remains historical; focused lint now passes.
 
 ## Execution order and publication gate
 

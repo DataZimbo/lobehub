@@ -1,13 +1,13 @@
 import { mkdir, open } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { dirname } from 'node:path';
+import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { fixtures } from './responses';
 
 /** Disposable test endpoint, never a product route. Use synthetic Agent inputs only. */
 export async function startReceiver(options: { host?: string; log: string; port?: number }) {
-  await mkdir(dirname(options.log), { recursive: true });
+  await mkdir(path.dirname(options.log), { recursive: true });
   const log = await open(options.log, 'ax', 0o600);
   let sequence = 0;
   const pending = new Set<Promise<void>>();
@@ -49,25 +49,34 @@ export async function startReceiver(options: { host?: string; log: string; port?
       } catch {
         event = { invalidJson: true, bytes };
       }
-      await log.appendFile(JSON.stringify({ id, name, phase: 'received', at: startedAt, event }) + '\n');
+      await log.appendFile(
+        JSON.stringify({ id, name, phase: 'received', at: startedAt, event }) + '\n',
+      );
       await delay(fixture.delayMs ?? 0);
       const closed = response.destroyed;
       if (!closed) {
         response.writeHead(fixture.status ?? 200, { 'content-type': 'application/json' });
         response.end(fixture.body);
       }
-      await log.appendFile(JSON.stringify({
-        id, name, phase: closed ? 'client-disconnected' : 'response-sent',
-        at: Date.now(), elapsedMs: Date.now() - startedAt,
-        status: fixture.status ?? 200,
-      }) + '\n');
+      await log.appendFile(
+        JSON.stringify({
+          id,
+          name,
+          phase: closed ? 'client-disconnected' : 'response-sent',
+          at: Date.now(),
+          elapsedMs: Date.now() - startedAt,
+          status: fixture.status ?? 200,
+        }) + '\n',
+      );
     })();
     pending.add(task);
-    void task.catch(() => {
-      console.error('Receiver request failed; no request contents logged to stderr');
-      if (!response.headersSent) response.writeHead(500);
-      response.end();
-    }).finally(() => pending.delete(task));
+    void task
+      .catch(() => {
+        console.error('Receiver request failed; no request contents logged to stderr');
+        if (!response.headersSent) response.writeHead(500);
+        response.end();
+      })
+      .finally(() => pending.delete(task));
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
@@ -79,10 +88,10 @@ export async function startReceiver(options: { host?: string; log: string; port?
     url: `http://${options.host ?? '127.0.0.1'}:${address.port}`,
     async close() {
       await new Promise<void>((resolve, reject) => {
-        server.close((error) => error ? reject(error) : resolve());
+        server.close((error) => (error ? reject(error) : resolve()));
         server.closeAllConnections();
       });
-      await Promise.allSettled([...pending]);
+      await Promise.allSettled(pending);
       await log.close();
     },
   };
@@ -95,7 +104,7 @@ if (import.meta.main) {
     log: process.env.HOOK_RECEIVER_LOG,
     port: Number(process.env.HOOK_RECEIVER_PORT ?? 0),
   });
-  console.log(JSON.stringify({ url: receiver.url, fixtureNames: Object.keys(fixtures) }));
+  console.info(JSON.stringify({ url: receiver.url, fixtureNames: Object.keys(fixtures) }));
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => void receiver.close().then(() => process.exit(0)));
   }
