@@ -418,72 +418,91 @@ describe('Hooks integration — afterStep event is compatible with renderStepPro
 });
 
 describe('durable approval resolution notifications', () => {
-  it('drains persisted events once under the worker step lock, including a replacement worker', async () => {
-    vi.restoreAllMocks();
-    hookFetch.mockReset().mockResolvedValue(new Response('{}'));
-    const event = {
-      operationId: 'source',
-      action: 'approve' as const,
-      toolCallIds: ['native-1', 'native-2'],
-    };
-    let stored: any = {
-      operationId: 'continuation',
-      status: 'running',
-      stepCount: 1,
-      createdAt: '',
-      lastModified: '',
-      messages: [],
-      host: {
-        hooks: [
-          {
-            id: 'approval',
-            type: 'afterHumanIntervention',
-            webhook: { url: 'https://hooks.example/approval' },
-          },
-        ],
-        interventionHookEvents: [event],
-      },
-    };
-    const worker = (ownsLock = true) => {
-      const service = new AgentRuntimeService({} as any, 'user-1', { queueService: null });
-      const coordinator = (service as any).coordinator;
-      coordinator.tryClaimStep.mockResolvedValue(ownsLock);
-      coordinator.loadAgentState.mockImplementation(async () => structuredClone(stored));
-      coordinator.saveAgentState.mockImplementation(async (_op: string, state: any) => {
-        stored = structuredClone(state);
+  it.each(['legacy', 'source'] as const)(
+    'drains %s identity events once under the worker step lock, including a replacement worker',
+    async (identity) => {
+      vi.restoreAllMocks();
+      hookFetch.mockReset().mockResolvedValue(new Response('{}'));
+      const event = {
+        operationId: 'source',
+        userId: identity === 'legacy' ? 'user-1' : 'visitor-1', // Persisted source identity.
+        action: 'approve' as const,
+        toolCallIds: ['native-1', 'native-2'],
+      };
+      let stored: any = {
+        operationId: 'continuation',
+        origin: { userId: 'user-1' },
+        principal:
+          identity === 'legacy'
+            ? {
+                actor: {
+                  shareVisitor: {
+                    agentId: 'agent-1',
+                    shareId: 'share-1',
+                    visitorUserId: 'visitor-1',
+                  },
+                },
+              }
+            : undefined,
+        status: 'running',
+        stepCount: 1,
+        createdAt: '',
+        lastModified: '',
+        messages: [],
+        host: {
+          hooks: [
+            {
+              id: 'approval',
+              type: 'afterHumanIntervention',
+              webhook: { url: 'https://hooks.example/approval' },
+            },
+          ],
+          interventionHookEvents: [event],
+        },
+      };
+      const worker = (ownsLock = true) => {
+        const service = new AgentRuntimeService({} as any, 'user-1', { queueService: null });
+        const coordinator = (service as any).coordinator;
+        coordinator.tryClaimStep.mockResolvedValue(ownsLock);
+        coordinator.loadAgentState.mockImplementation(async () => structuredClone(stored));
+        coordinator.saveAgentState.mockImplementation(async (_op: string, state: any) => {
+          stored = structuredClone(state);
+        });
+        // stepCount already exceeds this delivery: only the durable hook ledger
+        // can be drained; the stale step cannot execute tools/LLM again.
+        return service;
+      };
+      // A worker that cannot enter the delivery boundary leaves the durable
+      // event untouched; a later owner can deliver it without regenerating it.
+      await worker(false).executeStep({
+        operationId: 'continuation',
+        stepIndex: 0,
+        context: { phase: 'user_input' } as any,
       });
-      // stepCount already exceeds this delivery: only the durable hook ledger
-      // can be drained; the stale step cannot execute tools/LLM again.
-      return service;
-    };
-    // A worker that cannot enter the delivery boundary leaves the durable
-    // event untouched; a later owner can deliver it without regenerating it.
-    await worker(false).executeStep({
-      operationId: 'continuation',
-      stepIndex: 0,
-      context: { phase: 'user_input' } as any,
-    });
-    expect(hookFetch).not.toHaveBeenCalled();
-    expect(stored.host.interventionHookEvents).toEqual([event]);
-    await worker().executeStep({
-      operationId: 'continuation',
-      stepIndex: 0,
-      context: { phase: 'user_input' } as any,
-    });
-    expect(hookFetch).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(hookFetch.mock.calls[0][1].body)).toMatchObject({
-      action: 'approve',
-      toolCallIds: ['native-1', 'native-2'],
-      operationId: 'source',
-    });
-    expect(stored.host.interventionHookEvents).toEqual([]);
-    await worker().executeStep({
-      operationId: 'continuation',
-      stepIndex: 0,
-      context: { phase: 'user_input' } as any,
-    });
-    expect(hookFetch).toHaveBeenCalledTimes(1);
-  });
+      expect(hookFetch).not.toHaveBeenCalled();
+      expect(stored.host.interventionHookEvents).toEqual([event]);
+      await worker().executeStep({
+        operationId: 'continuation',
+        stepIndex: 0,
+        context: { phase: 'user_input' } as any,
+      });
+      expect(hookFetch).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(hookFetch.mock.calls[0][1].body)).toMatchObject({
+        action: 'approve',
+        userId: 'visitor-1',
+        toolCallIds: ['native-1', 'native-2'],
+        operationId: 'source',
+      });
+      expect(stored.origin.userId).toBe('user-1');
+      expect(stored.host.interventionHookEvents).toEqual([]);
+      await worker().executeStep({
+        operationId: 'continuation',
+        stepIndex: 0,
+        context: { phase: 'user_input' } as any,
+      });
+      expect(hookFetch).toHaveBeenCalledTimes(1);
+    },
+  );
   it('checkpoints each action group before delivery of the next group', async () => {
     vi.restoreAllMocks();
     const events = [

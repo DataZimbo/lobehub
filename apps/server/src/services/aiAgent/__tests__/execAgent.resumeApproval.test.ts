@@ -344,7 +344,12 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
       },
     ];
     mockLoadInterventionContinuationState.mockResolvedValue({
-      origin: { agentId: 'agent-1', topicId: 'topic-1' },
+      origin: { agentId: 'agent-1', topicId: 'topic-1', userId: 'user-1' },
+      principal: {
+        actor: {
+          shareVisitor: { agentId: 'agent-1', shareId: 'share-1', visitorUserId: 'visitor-1' },
+        },
+      },
       host: { hooks },
     });
     mockFindOperationById.mockResolvedValue({ status: 'waiting_for_human' });
@@ -369,6 +374,11 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
     });
     const created = mockCreateOperation.mock.calls[0][0];
     expect(created.hooks).toEqual(hooks);
+    expect(
+      created.interventionHookEvents.every(
+        (event: { userId: string }) => event.userId === 'visitor-1',
+      ),
+    ).toBe(true);
     expect(created.interventionHookEvents).toEqual([
       expect.objectContaining({
         operationId: 'op-parked',
@@ -1558,7 +1568,12 @@ describe('AiAgentService.stopPendingApproval', () => {
         return true;
       });
       mockLoadInterventionContinuationState.mockResolvedValue({
-        origin: {},
+        origin: { userId: 'user-1' },
+        principal: {
+          actor: {
+            shareVisitor: { agentId: 'agent-1', shareId: 'share-1', visitorUserId: 'visitor-1' },
+          },
+        },
         host: {
           hooks: [
             {
@@ -1628,6 +1643,9 @@ describe('AiAgentService.stopPendingApproval', () => {
       }
       expect(pendingStopHookBatchId).toBeUndefined();
       await expectForeignRequestsRejected();
+      expect(
+        hookFetch.mock.calls.every(([, init]) => JSON.parse(init.body).userId === 'visitor-1'),
+      ).toBe(true);
       const delivered = hookFetch.mock.calls.length;
       await service.stopPendingApproval(params);
       expect(hookFetch).toHaveBeenCalledTimes(delivered);

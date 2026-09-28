@@ -80,6 +80,11 @@ describe('HumanInterventionHandler.process', () => {
           },
           operationId: 'restored-operation',
           origin: { userId: 'user-1' },
+          principal: {
+            actor: {
+              shareVisitor: { agentId: 'agent-1', shareId: 'share-1', visitorUserId: 'visitor-1' },
+            },
+          },
         }),
       );
       const state = JSON.parse(serialized);
@@ -101,12 +106,14 @@ describe('HumanInterventionHandler.process', () => {
       await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
       const payload = JSON.parse(fetch.mock.calls[0][1]!.body as string);
       expect(payload).toMatchObject({
+        userId: 'visitor-1',
         hookId: 'persisted-human',
         hookType,
         operationId: 'restored-operation',
         toolCallId: 'tool-call-1',
         toolCallIds: action === 'reject' ? ['tool-call-1', 'tool-call-2'] : ['tool-call-1'],
       });
+      expect(result.newState.origin.userId).toBe('user-1');
       expect(result.newState.host.hooks).toEqual(state.host.hooks);
       if (action === 'reject') {
         expect(result.newState.interruption).toMatchObject({

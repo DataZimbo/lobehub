@@ -9,6 +9,7 @@ import type {
   GeneralAgentCompressionResultPayload,
   InstructionExecutor,
 } from '../types';
+import { resolveHookUserId } from '../utils/resolveHookUserId';
 import { buildCompactHookContext } from './compactHookContext';
 
 const getErrorMessage = (error: unknown): string => {
@@ -115,7 +116,7 @@ export const compressContext =
         operationId,
         stepIndex,
         tokenCount: currentTokenCount,
-        userId,
+        userId: resolveHookUserId(userId, state.principal?.actor?.shareVisitor),
       },
       state.host?.hooks,
     );
@@ -283,7 +284,7 @@ export const compressContext =
           operationId,
           stepIndex,
           summary: summaryResult.content.slice(0, 500),
-          userId,
+          userId: resolveHookUserId(userId, state.principal?.actor?.shareVisitor),
         },
         state.host?.hooks,
       );
@@ -330,7 +331,7 @@ export const compressContext =
           operationId,
           stepIndex,
           tokenCount: currentTokenCount,
-          userId,
+          userId: resolveHookUserId(userId, state.principal?.actor?.shareVisitor),
         },
         state.host?.hooks,
       );

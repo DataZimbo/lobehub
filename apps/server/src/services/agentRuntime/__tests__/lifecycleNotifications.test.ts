@@ -1,7 +1,9 @@
 // @vitest-environment node
 /** Real step/completion producers through the dispatcher and HTTP transport. */
+import { normalizeAgentState } from '@lobechat/agent-runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createBotCompletionWebhook } from '@/server/services/bot/createBotCompletionHook';
 import { isQueueAgentRuntimeEnabled } from '@/server/services/queue/impls';
 
 import { AgentRuntimeService } from '../AgentRuntimeService';
@@ -176,6 +178,39 @@ afterEach(() => {
 });
 
 describe('lifecycle notifications from executeStep', () => {
+  it.each([false, true])(
+    'uses the trigger identity in all four events, preserving owner state (queue=%s)',
+    async (queue) => {
+      vi.mocked(isQueueAgentRuntimeEnabled).mockReturnValue(queue);
+      // Historical persisted state is normalized by the same loader contract as local/queue workers.
+      const state = normalizeAgentState({
+        ...makeState(),
+        metadata: {
+          agentShareVisitor: { agentId: 'agent-1', shareId: 'share-1', visitorUserId: 'visitor-1' },
+        },
+      } as any);
+      const { service, step, newState, coordinator } = setup(state);
+      const writes = observeStateWrites(coordinator);
+      const error = { type: 'ProviderFailure', message: 'provider failed' };
+      step.mockResolvedValue({
+        events: [{ type: 'done', reason: 'error' }],
+        newState: { ...newState, status: 'error', error },
+        nextContext: null,
+      });
+      await execute(service);
+      expect(httpEvents().map((event) => event.hookType)).toEqual(events);
+      for (const event of httpEvents()) {
+        expect(event.userId).toBe('visitor-1');
+        expect(event).not.toHaveProperty('actorUserId');
+        expect(event).not.toHaveProperty('ownerUserId');
+      }
+      expect(writes.length).toBeGreaterThan(0);
+      expect(writes.every((write: any) => write.origin.userId === 'user-1')).toBe(true);
+      expect((service as any).userId).toBe('user-1');
+      expect(state.origin.userId).toBe('user-1');
+    },
+  );
+
   it.each([false, true])('uses persisted hooks on a fresh worker (queue=%s)', async (queue) => {
     vi.mocked(isQueueAgentRuntimeEnabled).mockReturnValue(queue);
     const { service, step, newState } = setup();
@@ -224,6 +259,42 @@ describe('lifecycle notifications from executeStep', () => {
     });
   });
 
+  it('keeps the trusted owner on an internal QStash callback while external events identify the visitor', async () => {
+    vi.stubEnv('APP_URL', 'https://app.example.test');
+    vi.mocked(isQueueAgentRuntimeEnabled).mockReturnValue(true);
+    vi.stubEnv('QSTASH_TOKEN', 'test-token');
+    const state = {
+      ...makeState(),
+      principal: {
+        actor: {
+          shareVisitor: { agentId: 'agent-1', shareId: 'share-1', visitorUserId: 'visitor-1' },
+        },
+      },
+    };
+    const webhook = createBotCompletionWebhook({
+      botContext: {
+        applicationId: 'bot',
+        isOwner: false,
+        platform: 'telegram',
+        platformThreadId: 'chat',
+        senderExternalUserId: 'external',
+      },
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+    });
+    state.host.hooks.find((hook) => hook.type === 'onComplete')!.webhook = webhook;
+    const { service } = setup(state);
+    await execute(service);
+    expect(httpEvents().every((event) => event.userId === 'visitor-1')).toBe(true);
+    expect(publish).toHaveBeenCalledOnce();
+    expect(publish.mock.calls[0][0].body).toMatchObject({
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      operationId,
+    });
+    expect(webhook.fallback).toBe('none');
+  });
+
   it('delivers QStash notifications using persisted hooks without local registration', async () => {
     vi.mocked(isQueueAgentRuntimeEnabled).mockReturnValue(true);
     vi.stubEnv('QSTASH_TOKEN', 'test-token');
@@ -246,7 +317,14 @@ describe('lifecycle notifications from executeStep', () => {
   });
 
   it('keeps handler-only progress statistics equal to executed usage and retains local state', async () => {
-    const state = makeState();
+    const state = {
+      ...makeState(),
+      principal: {
+        actor: {
+          shareVisitor: { agentId: 'agent-1', shareId: 'share-1', visitorUserId: 'visitor-1' },
+        },
+      },
+    };
     state.host.hooks = [];
     const captured: AgentHookEvent[] = [];
     hookDispatcher.register(
@@ -262,6 +340,8 @@ describe('lifecycle notifications from executeStep', () => {
     const { service } = setup(state);
     await execute(service);
     expect(captured).toHaveLength(3);
+    expect(captured.every((event) => event.userId === 'visitor-1')).toBe(true);
+    expect(captured.every((event) => event.finalState?.origin?.userId === 'user-1')).toBe(true);
     expect(captured[1].totalToolCalls).toBe(1);
     expect(captured[2].totalToolCalls).toBe(1);
     expect(captured.every((event) => event.finalState !== undefined)).toBe(true);
@@ -385,7 +465,14 @@ describe('lifecycle notifications from executeStep', () => {
     'isolates two operations on one service when the second initial read succeeds=%s',
     async (secondReadSucceeds) => {
       vi.mocked(isQueueAgentRuntimeEnabled).mockReturnValue(true);
-      const firstState = makeState();
+      const firstState = {
+        ...makeState(),
+        principal: {
+          actor: {
+            shareVisitor: { agentId: 'agent-1', shareId: 'share-1', visitorUserId: 'visitor-1' },
+          },
+        },
+      };
       const { service, coordinator, step } = setup(firstState);
       const firstError = { type: 'ProviderFailure', message: 'first operation failed' };
       coordinator.loadAgentState
@@ -399,7 +486,12 @@ describe('lifecycle notifications from executeStep', () => {
         'onComplete',
         'onError',
       ]);
-      expect(httpEvents()[2]).toMatchObject({ operationId, ...origin, errorDetail: firstError });
+      expect(httpEvents()[2]).toMatchObject({
+        operationId,
+        ...origin,
+        userId: 'visitor-1',
+        errorDetail: firstError,
+      });
 
       const secondOperationId = 'second-operation';
       const secondOrigin = {
@@ -435,6 +527,7 @@ describe('lifecycle notifications from executeStep', () => {
         ([id, type]) => id === secondOperationId && type === 'onError',
       )?.[2] as AgentHookEvent;
       expect(secondErrorEvent.operationId).toBe(secondOperationId);
+      expect(secondErrorEvent.userId).toBe('user-1');
       expect(secondErrorEvent.errorDetail).toMatchObject(secondError);
       expect(coordinator.saveAgentState).toHaveBeenCalledTimes(1);
       const [, savedState] = coordinator.saveAgentState.mock.calls[0];

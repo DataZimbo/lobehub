@@ -1266,7 +1266,7 @@ export class CompletionLifecycle {
     return {
       assistantMessageId,
       event: {
-        ...buildLifecycleHookContext(operationId, state?.origin, this.userId),
+        ...buildLifecycleHookContext(operationId, state, this.userId),
         attachments: attachments.length > 0 ? attachments : undefined,
         cost: state?.cost?.total,
         duration,
@@ -1291,7 +1291,6 @@ export class CompletionLifecycle {
         totalSteps: state?.stepCount ?? 0,
         totalToolCalls: state?.usage?.tools?.totalCalls ?? 0,
         totalTokens: state?.usage?.llm?.tokens?.total,
-        userId: runOrigin.userId || this.userId,
       },
       metadata,
       origin: runOrigin,

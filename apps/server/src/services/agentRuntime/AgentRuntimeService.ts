@@ -15,6 +15,7 @@ import {
   findInMessages,
   GeneralChatAgent,
   isParkedStatus,
+  resolveHookUserId,
 } from '@lobechat/agent-runtime';
 import type { ISnapshotStore } from '@lobechat/agent-tracing';
 import { appendSubAgentReference, isCallSubAgentCall } from '@lobechat/builtin-tool-lobe-agent';
@@ -1818,7 +1819,15 @@ export class AgentRuntimeService {
           await hookDispatcher.dispatch(
             operationId,
             'afterHumanIntervention',
-            event,
+            {
+              ...event,
+              // The persisted event was built from the trusted source operation.
+              // Re-project legacy owner ids when the resumed state's share context exists.
+              userId: resolveHookUserId(
+                event.userId ?? agentState.origin?.userId ?? this.userId,
+                agentState.principal?.actor?.shareVisitor,
+              ),
+            },
             agentState.host.hooks,
           );
           await this.coordinator.saveAgentState(operationId, {
@@ -2023,7 +2032,7 @@ export class AgentRuntimeService {
             operationId,
             'beforeStep',
             {
-              ...buildLifecycleHookContext(operationId, agentState?.origin, this.userId),
+              ...buildLifecycleHookContext(operationId, agentState, this.userId),
               finalState: agentState,
               operationId,
               stepIndex,
@@ -2491,7 +2500,7 @@ export class AgentRuntimeService {
             operationId,
             'afterStep',
             {
-              ...buildLifecycleHookContext(operationId, stepResult.newState?.origin, this.userId),
+              ...buildLifecycleHookContext(operationId, stepResult.newState, this.userId),
               content,
               elapsedMs,
               executionTimeMs: stepPresentationData.executionTimeMs,
@@ -2518,7 +2527,6 @@ export class AgentRuntimeService {
               totalSteps: stepPresentationData.totalSteps,
               totalTokens: stepPresentationData.totalTokens,
               totalToolCalls: stepResult.newState?.usage?.tools?.totalCalls ?? 0,
-              userId: origin.userId || this.userId,
             },
             stepResult.newState?.host?.hooks,
           );

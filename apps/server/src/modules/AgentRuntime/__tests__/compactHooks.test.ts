@@ -53,6 +53,11 @@ const createFixture = (delivery: 'fetch' | 'qstash') => {
     messages,
     modelRuntimeConfig: { model: 'gpt-4', provider: 'openai' },
     operationId: 'operation',
+    principal: {
+      actor: {
+        shareVisitor: { agentId: 'agent-1', shareId: 'share-1', visitorUserId: 'visitor-1' },
+      },
+    },
     origin: {
       agentId: 'agent',
       lineage: { isSubAgent: true, parentOperationId: 'parent' },
@@ -136,6 +141,7 @@ describe('compact notifications through the server lifecycle and F HTTP dispatch
       expect(bodies.map((body) => body.hookType)).toEqual(['beforeCompact', 'afterCompact']);
       for (const body of bodies)
         expect(body).toMatchObject({
+          userId: 'visitor-1',
           agentId: 'agent',
           lineage: { isSubAgent: true, parentOperationId: 'parent' },
           operationId: 'operation',
@@ -152,6 +158,8 @@ describe('compact notifications through the server lifecycle and F HTTP dispatch
         summary: 'actual summary',
       });
       expect(result.newState.messages[0].content).toBe('actual summary');
+      expect(fixture.host.operation.userId).toBe('user');
+      expect(result.newState.principal).toEqual(fixture.state.principal);
       expect(result.newState.host?.hooks).toEqual(fixture.state.host?.hooks);
       expect(fixture.rollbackGroup).not.toHaveBeenCalled();
     },
@@ -167,6 +175,7 @@ describe('compact notifications through the server lifecycle and F HTTP dispatch
     const bodies = publishJSON.mock.calls.map(([request]) => request.body);
     expect(bodies.map((body) => body.hookType)).toEqual(['beforeCompact', 'onCompactError']);
     expect(bodies[1]).toMatchObject({
+      userId: 'visitor-1',
       error: error.message,
       tokenCount: 8000,
       parentOperationId: 'parent',
