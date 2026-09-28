@@ -1,5 +1,7 @@
 # D: integration preparation (phase 1)
 
+Cloud-dependent blocked subcases and the minimal real entry are listed in [cloud-blocked-subcases.md](cloud-blocked-subcases.md). OSS evidence is retained separately; no generic token/UI pass is inferred from the compatibility fallback.
+
 Status: preparation only. Starting revision `66af6210de918a26394f9afe5a389ac99c3de71f` is F, **not** the integrated product. Its dispatcher explicitly rejects control hooks until C1 integration. Do not publish `plan.json` as a completed result. Product execution and a public documentation PR wait for the coordinator's final base.
 
 ## Files and finishing criteria

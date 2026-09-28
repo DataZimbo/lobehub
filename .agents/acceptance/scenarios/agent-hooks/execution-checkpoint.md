@@ -1,5 +1,7 @@
 # Integrated execution checkpoint (not a final acceptance)
 
+Cloud-dependent blocked subcases and the minimal real entry are listed in [cloud-blocked-subcases.md](cloud-blocked-subcases.md). OSS evidence is retained separately; no generic token/UI pass is inferred from the compatibility fallback.
+
 Latest notification-only supplement: [notification-checkpoint.md](notification-checkpoint.md), integration `a471e3876a3ecd25cb233108754e1be3f0ac2cc3`. The historical observations below retain their original SHA and open conditions.
 
 Tested product tree: integration-base `858b2d4586fcd2b0cfea8b3f8b8757019e152a29`. D PR: <https://github.com/lobehub/lobehub/pull/20137> (draft). No product logic changes were made by D. The two integration test repairs adapt old fixtures to durable preparation, assistant ownership, expanded notification fields, and the current SSRF transport boundary.
