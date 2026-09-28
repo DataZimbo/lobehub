@@ -131,6 +131,9 @@ describe('hook registration and restoration', () => {
     const tool = {
       apiName: 'readFile',
       args: {},
+      assistantMessageId: 'assistant',
+      executor: 'server' as const,
+      toolCallId: 'native',
       callIndex: 0,
       identifier: 'other',
       operationId: 'op',
@@ -156,7 +159,16 @@ describe('hook registration and restoration', () => {
       },
       { ...hook, type: 'beforeToolCall', matcher: '^fs/' },
     ]);
-    const tool = { apiName: 'readFile', args: {}, callIndex: 0, identifier: 'other', stepIndex: 0 };
+    const tool = {
+      apiName: 'readFile',
+      args: {},
+      assistantMessageId: 'assistant',
+      callIndex: 0,
+      executor: 'server' as const,
+      identifier: 'other',
+      stepIndex: 0,
+      toolCallId: 'native-tool',
+    };
     await dispatcher.dispatchBeforeToolCall('op', tool);
     await dispatcher.dispatch('op', 'beforeToolCall', { ...tool, operationId: 'op' });
     expect(handler).not.toHaveBeenCalled();
@@ -211,6 +223,9 @@ describe('registration snapshots', () => {
     await dispatcher.dispatch('op', 'beforeToolCall', {
       apiName: 'read',
       args: {},
+      assistantMessageId: 'assistant',
+      executor: 'server',
+      toolCallId: 'native',
       callIndex: 0,
       identifier: 'fs',
       operationId: 'op',

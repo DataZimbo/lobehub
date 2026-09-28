@@ -32,7 +32,6 @@ export const buildToolCallHookContext = (
     groupId: origin?.groupId ?? context.groupId,
     identifier: call.identifier,
     operationId: runtime.operationId,
-    originalArgs: structuredClone(context.originalArgs ?? context.parsedArgs),
     parentOperationId: origin?.lineage?.parentOperationId,
     sessionId: origin?.sessionId,
     sourceMessageId: origin?.sourceMessageId ?? context.messageId,

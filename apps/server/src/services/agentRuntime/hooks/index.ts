@@ -11,6 +11,8 @@ export type {
   AgentHookEvent,
   AgentHookType,
   AgentHookWebhook,
+  AgentHookWebhookPayload,
   NotificationWebhook,
   SerializedHook,
+  ToolCallControlEvent,
 } from './types';

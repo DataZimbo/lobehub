@@ -53,8 +53,10 @@ dispatch; this identity change does not make those paths available to visitors.
   The caller's context is cloned, so a retained step context cannot accumulate
   rewrites on retry.
 - The effective input is shared by audits, pending cards, lane serialization,
-  server/device/client dispatch and before/after/error payloads. T's
-  `originalArgs` is a separate cloned snapshot of the model's input.
+  server/device/client dispatch and before/after/error payloads. C2 retains
+  `originalArgs` separately in preparation and internal `ToolRunContext`; the
+  server-only `ToolCallControlEvent` carries its clone to controls. T's public
+  lifecycle notification context does not expose original arguments.
 - Existing tool rows store `pluginState.hookPreparation`. `updateToolCall`
   atomically updates plugin arguments and preparation, without a new table or
   process-global cache. Human resolution records `approvedArguments` in the
@@ -70,6 +72,24 @@ by assistant parent and native call ID; raw in-memory rows without a parent use
 the nearest preceding caller. Neither projection mutates stored history or the
 original preparation snapshot. Unprepared/streaming calls retain their prior
 behavior. Existing prepared rows benefit on reload without a migration.
+
+Controls use the shared per-dispatcher async webhook payload builder after each
+hook's effective arguments have been selected. Empty body/projection settings
+preserve the authoritative event. The control snapshot is cloned from
+`context.originalArgs ?? context.parsedArgs`; recovered original input cannot be
+replaced by already rewritten arguments. Email enrichment follows the inherited
+trusted-identity policy and one-second limit. Missing or failed enrichment omits
+email; an aborted wait returns `cancelled` and sends no control HTTP request.
+
+Notification callers may supply server-only `HookDeliveryContext { ownerUserId }`
+per delivery: the fifth argument of `dispatch` or the fourth argument of
+`dispatchBeforeToolCall`. The private `dispatchHooks` keeps `stopAfterHandler` in
+position five and receives delivery context in position six. No context is stored
+on the dispatcher, serialized with hooks or added to the payload. The shared
+builder authorizes the final user ID before reading its email cache and never
+queries an operation owner. L owns supplying trusted owner context at producers,
+including cold workers. Control preparation keeps its fourth `AbortSignal` and
+uses `{ signal }` without owner context because its final ID is the event user.
 
 ## Approval recovery
 
