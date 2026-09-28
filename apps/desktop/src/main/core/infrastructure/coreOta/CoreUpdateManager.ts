@@ -236,6 +236,7 @@ export class CoreUpdateManager {
     this.bootCrashCount = 0;
     this.rollbackRendererDir = null;
     this.gc();
+    if (this.coldBootCheck) void this.checkForUpdates();
   };
 
   handleRendererCrash = () => {
@@ -298,7 +299,8 @@ export class CoreUpdateManager {
     staged: this.staged?.version ?? null,
   });
 
-  checkForUpdates = () => {
+  checkForUpdates = ({ manual = false }: { manual?: boolean } = {}) => {
+    if (manual && this.staged) this.announceStaged();
     this.checkTask = this.checkTask
       .catch(() => {})
       .then(async () => {
@@ -325,9 +327,15 @@ export class CoreUpdateManager {
   };
 
   private async runCheck(startupProgress?: (state: StartupUpdateProgress) => void) {
-    if (!this.enabled || this.busy || this.staged) {
+    if (!this.enabled || this.busy || this.staged || this.pendingBootCheck) {
       logger.info('Core OTA check skipped', {
-        reason: !this.enabled ? 'disabled' : this.busy ? 'busy' : 'already-staged',
+        reason: !this.enabled
+          ? 'disabled'
+          : this.busy
+            ? 'busy'
+            : this.pendingBootCheck
+              ? 'boot-validation'
+              : 'already-staged',
       });
       return;
     }
@@ -375,11 +383,7 @@ export class CoreUpdateManager {
           : { staged: version },
       );
       this.lastError = null;
-      if (!startupProgress)
-        this.app.browserManager.broadcastToAllWindows('updateReady', {
-          kind: applyMode === 'relaunch' ? 'core-relaunch' : 'core-reload',
-          version,
-        });
+      if (!startupProgress) this.announceStaged();
       this.gc();
       if (!startupProgress && applyMode === 'reload') this.handleWindowBlur();
       outcome = 'staged';
@@ -399,6 +403,15 @@ export class CoreUpdateManager {
       logger.info('Core OTA check finished', { channel: this.activeChannel, outcome });
     }
     return outcome;
+  }
+
+  private announceStaged() {
+    if (!this.staged) return;
+    const { applyMode, version } = this.staged;
+    this.app.browserManager.broadcastToAllWindows('updateReady', {
+      kind: applyMode === 'relaunch' ? 'core-relaunch' : 'core-reload',
+      version,
+    });
   }
 
   private async fetchRemote(feedUrl: string, generation: number): Promise<CoreManifest | null> {

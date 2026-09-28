@@ -352,15 +352,35 @@ describe('CoreUpdateManager initialize', () => {
       );
     };
 
+    it('keeps the validated pointer intact until cold boot succeeds, then immediately checks', async () => {
+      vi.useFakeTimers();
+      try {
+        serveLatest(mainChanged('1.0.2', 2));
+        const { manager } = await bootExternal({ failures: 1, version: '1.0.1' });
+        manager.startScheduledChecks();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(readPointer(otaRoot(), ABI)).toMatchObject({ current: '1.0.1', previous: null });
+        expect(fetchImpl).not.toHaveBeenCalled();
+        const resumedCheck = vi.spyOn(manager, 'checkForUpdates');
+        manager.handleBootPing('mounted');
+        expect(resumedCheck).toHaveBeenCalledOnce();
+        await resumedCheck.mock.results[0].value;
+        expect(readPointer(otaRoot(), ABI)).toMatchObject({ current: '1.0.2', previous: '1.0.1' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('rolls back and relaunches when the first boot of a version never mounts', async () => {
       vi.useFakeTimers();
       try {
+        serveLatest(mainChanged('1.0.2', 2));
         const { app, manager } = await bootExternal({ failures: 1, version: '1.0.1' });
         manager.startScheduledChecks();
 
-        vi.advanceTimersByTime(30_000);
+        await vi.advanceTimersByTimeAsync(30_000);
         expect(electronMock.app.relaunch).not.toHaveBeenCalled();
-        vi.advanceTimersByTime(31_000);
+        await vi.advanceTimersByTimeAsync(31_000);
 
         expect(readPointer(otaRoot(), ABI)).toMatchObject({ blacklist: ['1.0.1'], current: null });
         expect(electronMock.app.relaunch).toHaveBeenCalled();
@@ -509,6 +529,22 @@ describe('CoreUpdateManager checkForUpdates', () => {
     const reload =
       app.browserManager.browsers.get('main')!.browserWindow.webContents.reloadIgnoringCache;
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-announces an already staged core on a manual check', async () => {
+    serveLatest(rendererOnly('1.0.1', 1));
+    const { app, manager } = await loadManager();
+    await manager.checkForUpdates();
+    vi.mocked(app.browserManager.broadcastToAllWindows).mockClear();
+
+    await manager.checkForUpdates();
+    expect(app.browserManager.broadcastToAllWindows).not.toHaveBeenCalled();
+
+    await manager.checkForUpdates({ manual: true });
+    expect(app.browserManager.broadcastToAllWindows).toHaveBeenCalledWith('updateReady', {
+      kind: 'core-reload',
+      version: '1.0.1',
+    });
   });
 
   it('stages a main-process change as core-relaunch and switches pointer immediately', async () => {
