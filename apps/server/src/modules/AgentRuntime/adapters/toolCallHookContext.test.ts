@@ -45,6 +45,57 @@ const runtime = {
 };
 
 describe('buildToolCallHookContext', () => {
+  it.each([
+    {
+      originUser: 'origin-owner',
+      runtimeUser: 'runtime-owner',
+      visitor: 'visitor-1',
+      user: 'visitor-1',
+    },
+    {
+      originUser: 'origin-owner',
+      runtimeUser: 'runtime-owner',
+      visitor: undefined,
+      user: 'runtime-owner',
+    },
+    {
+      originUser: 'origin-owner',
+      runtimeUser: undefined,
+      visitor: undefined,
+      user: 'origin-owner',
+    },
+    {
+      originUser: undefined,
+      runtimeUser: undefined,
+      visitor: 'visitor-1',
+      user: 'visitor-1',
+    },
+    {
+      originUser: undefined,
+      runtimeUser: undefined,
+      visitor: undefined,
+      user: undefined,
+    },
+  ])(
+    'resolves hook userId to the session initiator $user',
+    ({ originUser, runtimeUser, visitor, user }) => {
+      const context = createContext();
+      context.state.origin = { userId: originUser };
+      if (visitor) {
+        context.state.principal = {
+          actor: {
+            shareVisitor: { agentId: 'shared-agent', shareId: 'share-1', visitorUserId: visitor },
+          },
+        };
+      }
+
+      const event = buildToolCallHookContext(call, context, { ...runtime, userId: runtimeUser });
+
+      expect(event.userId).toBe(user);
+      expect(context.state.origin?.userId).toBe(originUser);
+    },
+  );
+
   it('keeps original and effective args distinct and snapshots original nested values', () => {
     const context = createContext();
     context.originalArgs = { filter: { query: 'original' } };
