@@ -1,5 +1,7 @@
 # D: Hook integration and acceptance work in progress
 
+Latest r22: [custom contract and mixed Stop](cloud-custom-checkpoint.md) confirms that the real Marketplace producer does **not advertise cancel\_interaction**; the actual token request returns400 with unchanged DB/no claim. This is an unavailable action, not custom-handler retry coverage. Its supported mixed custom+binary Stop returns500→500→200→replay with receipts1→2→3→3, both members cancelled and no effects. Pending/final UI limits remain explicit.
+
 Cloud-dependent blocked subcases and the minimal real entry are listed in [cloud-blocked-subcases.md](cloud-blocked-subcases.md). OSS evidence is retained separately; no generic token/UI pass is inferred from the compatibility fallback.
 
 Current status: integration-base is `ab5d35a6d7b4f009866677f4304b29dea9ac0da1` (C2 32d0c692, production unchanged from 398d8a64, fixed C1/H/S/K/L ancestors). Draft PR #20137 still targets this own integration branch. Full 31-item acceptance is incomplete; no published pass or ready status is claimed.
