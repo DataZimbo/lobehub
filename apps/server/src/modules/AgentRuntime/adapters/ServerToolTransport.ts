@@ -41,6 +41,7 @@ import {
 import { resolveRunActiveDeviceId } from '../executors/resolveRunActiveDeviceId';
 import { resolveRunProjectSkills } from '../executors/resolveRunProjectSkills';
 import { resolveToolTimeoutMs } from '../resolveToolTimeout';
+import { buildToolCallHookContext } from './toolCallHookContext';
 
 export class ServerToolTransport implements ToolTransport {
   maxRetries = TOOL_MAX_RETRIES;
@@ -88,7 +89,7 @@ export class ServerToolTransport implements ToolTransport {
     error: unknown,
     context: ToolRunContext,
   ): Promise<void> {
-    const { hookDispatcher, operationId, stepIndex, userId } = this.ctx;
+    const { hookDispatcher, operationId, stepIndex } = this.ctx;
 
     if (hookDispatcher) {
       hookDispatcher
@@ -96,14 +97,8 @@ export class ServerToolTransport implements ToolTransport {
           operationId,
           'onToolCallError',
           {
-            apiName: chatToolPayload.apiName,
-            args: context.parsedArgs,
-            callIndex: context.callIndex,
+            ...buildToolCallHookContext(chatToolPayload, context, this.ctx),
             error: error instanceof Error ? error.message : String(error),
-            identifier: chatToolPayload.identifier,
-            operationId,
-            stepIndex,
-            userId,
           },
           context.state.host?.hooks,
         )
@@ -365,33 +360,15 @@ export class ServerToolTransport implements ToolTransport {
   }
 
   private async dispatchBeforeToolCall(chatToolPayload: ChatToolPayload, context: ToolRunContext) {
-    const { hookDispatcher, operationId, stepIndex, userId } = this.ctx;
+    const { hookDispatcher, operationId } = this.ctx;
     if (!hookDispatcher) return null;
 
+    const event = buildToolCallHookContext(chatToolPayload, context, this.ctx);
     hookDispatcher
-      .dispatch(
-        operationId,
-        'beforeToolCall',
-        {
-          apiName: chatToolPayload.apiName,
-          args: context.parsedArgs,
-          callIndex: context.callIndex,
-          identifier: chatToolPayload.identifier,
-          operationId,
-          stepIndex,
-          userId,
-        },
-        context.state.host?.hooks,
-      )
+      .dispatch(operationId, 'beforeToolCall', event, context.state.host?.hooks)
       .catch(() => {});
 
-    return hookDispatcher.dispatchBeforeToolCall(operationId, {
-      apiName: chatToolPayload.apiName,
-      args: context.parsedArgs,
-      callIndex: context.callIndex,
-      identifier: chatToolPayload.identifier,
-      stepIndex,
-    });
+    return hookDispatcher.dispatchBeforeToolCall(operationId, event);
   }
 
   private async dispatchAfterToolCall(
@@ -400,7 +377,7 @@ export class ServerToolTransport implements ToolTransport {
     result: ToolRunExecution['result'],
     mocked: boolean,
   ) {
-    const { hookDispatcher, operationId, stepIndex, userId } = this.ctx;
+    const { hookDispatcher, operationId } = this.ctx;
     if (!hookDispatcher) return;
 
     // A tool that outlives an abort still finishes in the background — we cannot
@@ -416,17 +393,12 @@ export class ServerToolTransport implements ToolTransport {
         operationId,
         'afterToolCall',
         {
-          apiName: chatToolPayload.apiName,
-          args: context.parsedArgs,
-          callIndex: context.callIndex,
+          ...buildToolCallHookContext(chatToolPayload, context, this.ctx),
           content: result.content,
           executionTimeMs: result.executionTime ?? 0,
-          identifier: chatToolPayload.identifier,
           mocked,
-          operationId,
-          stepIndex,
+          result,
           success: result.success,
-          userId,
         },
         context.state.host?.hooks,
       )
