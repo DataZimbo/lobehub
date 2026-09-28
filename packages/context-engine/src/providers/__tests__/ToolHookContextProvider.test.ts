@@ -48,6 +48,77 @@ describe('persisted tool hook contexts', () => {
     );
   });
 
+  it.each([true, false])(
+    'scopes effective raw-history inputs to each caller (durable parent=%s)',
+    async (durableParent) => {
+      const source = context();
+      source.messages = [1, 2].flatMap((index) => [
+        {
+          id: `assistant-${index}`,
+          role: 'assistant' as const,
+          content: '',
+          tools: [
+            {
+              id: 'native',
+              identifier: 'fs',
+              apiName: 'write',
+              type: 'builtin' as const,
+              arguments: '{"path":"original"}',
+            },
+          ],
+        },
+        {
+          id: `tool-${index}`,
+          role: 'tool' as const,
+          content: 'done',
+          tool_call_id: 'native',
+          ...(durableParent ? { parentId: `assistant-${index}` } : {}),
+          plugin: {
+            identifier: 'fs',
+            apiName: 'write',
+            type: 'builtin' as const,
+            arguments: JSON.stringify({ path: `effective-${index}` }),
+          },
+          pluginState: { hookPreparation: { originalArgs: { path: 'original' }, status: 'ready' } },
+        },
+      ]);
+      const before = structuredClone(source);
+      const provider = new ToolHookContextProvider();
+      const projected = await provider.process(source);
+      expect(
+        projected.messages
+          .filter(({ role }) => role === 'assistant')
+          .map(({ tools }) => tools?.[0].arguments),
+      ).toEqual(['{"path":"effective-1"}', '{"path":"effective-2"}']);
+      expect((await provider.process(projected)).messages).toEqual(projected.messages);
+      expect(source).toEqual(before);
+    },
+  );
+
+  it('does not project a prepared row belonging to a different assistant', async () => {
+    const source = context();
+    source.messages.unshift({
+      id: 'assistant',
+      role: 'assistant',
+      content: '',
+      tools: [
+        { id: 'native', identifier: 'fs', apiName: 'write', type: 'builtin', arguments: '{}' },
+      ],
+    });
+    Object.assign(source.messages[3], {
+      parentId: 'foreign-assistant',
+      plugin: {
+        arguments: '{"path":"foreign"}',
+        identifier: 'fs',
+        apiName: 'write',
+        type: 'builtin',
+      },
+    });
+    expect(
+      (await new ToolHookContextProvider().process(source)).messages[0].tools?.[0].arguments,
+    ).toBe('{}');
+  });
+
   it('does not move guidance from missing tool records to user/system messages', async () => {
     const source = context();
     source.messages = source.messages.slice(0, 2);

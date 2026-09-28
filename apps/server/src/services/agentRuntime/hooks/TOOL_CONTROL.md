@@ -39,6 +39,17 @@ retain `fallback: 'none'` failure propagation.
   process-global cache. Human resolution records `approvedArguments` in the
   existing intervention data before any resumed rewrite can change the row.
 
+The assistant's persisted `tools` can still contain the model's original request:
+LLM finalization precedes hook preparation. `conversation-flow` overlays the
+matched prepared tool row's `plugin.arguments` when constructing its assistant
+block, so cold approval cards read the same effective input as execution.
+`ToolHookContextProvider` performs the equivalent projection for raw inline
+history before MessagesEngine emits provider tool calls. Durable rows are bound
+by assistant parent and native call ID; raw in-memory rows without a parent use
+the nearest preceding caller. Neither projection mutates stored history or the
+original preparation snapshot. Unprepared/streaming calls retain their prior
+behavior. Existing prepared rows benefit on reload without a migration.
+
 ## Approval recovery
 
 Both legacy in-place `human_approved_tool` and new continuation workers load the
