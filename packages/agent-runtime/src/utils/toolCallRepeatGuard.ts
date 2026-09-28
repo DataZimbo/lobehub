@@ -57,3 +57,4 @@ export const updateToolCallRepeatGuard = (
 
 export const hasRepeatedToolCall = (guard: AgentState['toolCallRepeatGuard']) =>
   Object.values(guard?.counts ?? {}).some((count) => count >= TOOL_CALL_REPEAT_LIMIT);
+
