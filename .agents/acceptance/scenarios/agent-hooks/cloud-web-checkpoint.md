@@ -1,6 +1,6 @@
 # Real Cloud conversation approval — r23
 
-The conversation UI now has real single and partial-batch approval evidence. This supplements r20 token API and r21 partial API results; it does not turn the missing standalone token page, Stop rendering defects or model-dependent outcomes into passes.
+The conversation UI now has real single and partial-batch approval evidence. This supplements r20 token API and r21 partial API results; it does not turn the unavailable browser token fallback, Stop rendering defects or model-dependent outcomes into passes. The token link's existing Mobile Universal Link consumer is outside this executed platform scope; see [r20 platform attribution](cloud-token-checkpoint.md). Conversation source-card interactions do not prove Mobile or browser token-link UI.
 
 ## Fixed environment and the pending-card investigation
 
