@@ -523,7 +523,11 @@ export class ConversationLifecycleActionImpl {
         compressContext.topicId &&
         !hasRunningCompressionOperation(Object.values(this.#get().operations), compressContext)
       ) {
-        await this.executeCompression(compressContext, '');
+        // Server-runtime agents compact on the server; only the client runtime
+        // (e.g. browser-reachable local models) still summarizes from here.
+        await this.executeCompression(compressContext, '', {
+          serverSide: runtimeType === 'gateway' && !heterogeneousProvider,
+        });
       }
       return;
     }
@@ -2348,6 +2352,7 @@ export class ConversationLifecycleActionImpl {
   executeCompression = async (
     context: Record<string, any>,
     parentOperationId: string,
+    options: { serverSide?: boolean } = {},
   ): Promise<void> => {
     const { agentId, topicId } = context;
     if (!topicId) return;
@@ -2382,6 +2387,27 @@ export class ConversationLifecycleActionImpl {
     );
 
     try {
+      if (options.serverSide) {
+        const result = await messageService.compactContext(
+          { agentId, groupId: context.groupId, threadId: context.threadId, topicId },
+          { signal: abortController.signal },
+        );
+
+        if (abortController.signal.aborted) throw createAbortError();
+
+        if (result.skipped) {
+          this.#get().internal_dispatchMessage(
+            { type: 'deleteMessages', ids: [tempId] },
+            { operationId },
+          );
+        } else {
+          this.#get().replaceMessages(result.messages, { context: context as any });
+        }
+
+        this.#get().completeOperation(operationId);
+        return;
+      }
+
       // 1. Create compression group on server
       const result = await messageService.createCompressionGroup({
         agentId,
