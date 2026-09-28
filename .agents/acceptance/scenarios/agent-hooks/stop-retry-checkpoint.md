@@ -1,5 +1,7 @@
 # Submitted critical Stop retry repair — bounded D verification
 
+Latest ancestry update: C1 7a6dd20f is now present through C2 608593a3 in D base 7b231bb3e9b8. Earlier C1-pending statements below describe the recorded execution time; remaining C2/S fixture repairs and final review are still pending. No evidence SHA is changed.
+
 Temporary integration-base `cad39cb803a8dfd5830130fd58dc2c2038271609` includes C2 `8f4d8488c72455679ee78e52154de7e450cfae4b`, S/K/latest L, without conflicts. Docs merge `e90c22d0b633997aa5d5f8cdc4c3dbc21aa3ae85` was executed. The C1 7a6dd20f mock repair is still absent; final integration/served SHA and coordinator's final independent repair review remain pending. This supersedes the previous “fix not submitted” status, not the remaining review/Cloud gates.
 
 ## H10 / D04 / D06 sequence and observations

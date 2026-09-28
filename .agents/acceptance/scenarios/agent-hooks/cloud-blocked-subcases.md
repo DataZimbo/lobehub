@@ -1,5 +1,7 @@
 # Cloud-dependent blocked subcases
 
+Latest ancestry update: C1 7a6dd20f is now present through C2 608593a3 in D base 7b231bb3e9b8. Earlier C1-pending statements below describe the recorded execution time; remaining C2/S fixture repairs and final review are still pending. No evidence SHA is changed.
+
 Latest Stop repair is submitted and temporarily integrated; see [stop-retry-checkpoint.md](stop-retry-checkpoint.md). Earlier candidate/uncommitted status below is historical. Cloud product evidence and final independent repair review remain open.
 
 Status: blocked, not passed. This supplements the existing 31 IDs without changing their acceptance criteria or allocating a new checker review. Current temporary D integration-base is `cad39cb803a8dfd5830130fd58dc2c2038271609`; it is not the final served revision. The Stop repair is submitted with bounded D backend evidence; the C1 factory-mock update still awaits the next C2 head.
