@@ -934,6 +934,7 @@ export class AiAgentService {
     // Stages 2.6–2.7 — claim the human decision(s) before anything below reads
     // message history (see `pipeline/approvalResume`).
     const {
+      approvalHookDecisions,
       approvalOwnerAssistantId,
       approvalSourceOperationId,
       approvalSourceToolMessageIds,
@@ -1331,6 +1332,7 @@ export class AiAgentService {
       runContext,
       {
         approvalClaim,
+        approvalHookDecisions,
         approvalSourceOperationId,
         approvalSourceToolMessageIds,
         autoStart,

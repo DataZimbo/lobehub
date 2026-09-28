@@ -42,7 +42,7 @@ export type NotificationWebhook = AgentHookWebhook & {
   responseHandling?: 'ignore';
 };
 
-/** Control hooks are webhook-only and synchronous. Runtime support is gated by registration. */
+/** Control hooks are webhook-only and synchronous. Prepared before product permission and approval checks. */
 export type AgentHook = {
   id: string;
   matcher?: AgentHookMatcher;

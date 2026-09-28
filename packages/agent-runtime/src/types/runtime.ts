@@ -22,6 +22,7 @@ export type InstructionExecutor = (
 export interface RuntimeConfig {
   /** Custom executors for specific instruction types */
   executors?: Partial<Record<AgentInstruction['type'], InstructionExecutor>>;
+
   /** Function to get operation context and abort controller */
   getOperation?: (operationId: string) => {
     abortController: AbortController;
@@ -29,4 +30,6 @@ export interface RuntimeConfig {
   };
   /** Operation ID for tracking this runtime instance */
   operationId?: string;
+  /** Runs before the agent makes permission/approval decisions. */
+  prepareTools?: (context: AgentRuntimeContext, state: AgentState) => Promise<void>;
 }

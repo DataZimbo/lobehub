@@ -65,6 +65,7 @@ import { formatErrorForState } from '@/server/modules/AgentRuntime/formatErrorFo
 import { hasNonPersistedMessage } from '@/server/modules/AgentRuntime/messagePersistence';
 import {
   createRuntimeExecutors,
+  createRuntimeToolPreparation,
   type RuntimeExecutorContext,
 } from '@/server/modules/AgentRuntime/RuntimeExecutors';
 import { type IStreamEventManager } from '@/server/modules/AgentRuntime/types';
@@ -92,7 +93,8 @@ import {
 } from './CompletionLifecycle';
 import { stepChangedCredentials } from './credentialFacts';
 import { logToolCallPc } from './formalObservation';
-import { type AgentHook, hookDispatcher } from './hooks';
+import { type AgentHook, CriticalHookDeliveryError, hookDispatcher } from './hooks';
+import { buildLifecycleHookContext } from './hooks/lifecycleHookContext';
 import { HumanInterventionHandler } from './HumanInterventionHandler';
 import { buildMessagePatch } from './messagePatch';
 import { OperationTraceRecorder } from './OperationTraceRecorder';
@@ -1303,6 +1305,12 @@ export class AgentRuntimeService {
       operationCreated = true;
 
       // Save initial state
+      if (params.interventionHookEvents?.length) {
+        initialState.host = {
+          ...initialState.host,
+          interventionHookEvents: params.interventionHookEvents,
+        };
+      }
       await this.coordinator.saveAgentState(operationId, initialState as any);
 
       // Register external hooks
@@ -1766,6 +1774,8 @@ export class AgentRuntimeService {
     // runtime.step() call site stays as the authoritative start for the
     // success path.
     const stepStartAt = Date.now();
+    // Preserve observed origin/hooks if the error-path state store read fails.
+    const lastLoadedState: { current?: AgentState | null } = {};
 
     // Hoisted so the shared `finally` knows whether the next step stays in this
     // invocation. When it does, the accumulated trace partial stays in memory;
@@ -1792,9 +1802,26 @@ export class AgentRuntimeService {
         // the contract that lets the client treat the pushed uiMessages as
         // the source of truth instead of doing its own refetch.
         const agentState = await this.coordinator.loadAgentState(operationId);
+        lastLoadedState.current = agentState;
 
         if (!agentState) {
           throw new Error(`Agent state not found for operation ${operationId}`);
+        }
+
+        // Only a durably prepared continuation reaches this step lock. Claim
+        // and rollback never publish success; repeated queue/reuse deliveries
+        // see the drained ledger. HTTP delivery remains at-least-once on crash.
+        if (agentState.host?.interventionHookEvents?.length) {
+          for (const event of agentState.host.interventionHookEvents) {
+            await hookDispatcher.dispatch(
+              operationId,
+              'afterHumanIntervention',
+              event,
+              agentState.host.hooks,
+            );
+          }
+          agentState.host.interventionHookEvents = [];
+          await this.coordinator.saveAgentState(operationId, agentState);
         }
 
         // A parked approval step is already durable before its generic Review
@@ -1991,12 +2018,11 @@ export class AgentRuntimeService {
             operationId,
             'beforeStep',
             {
-              agentId: beforeStepOrigin.agentId || '',
+              ...buildLifecycleHookContext(operationId, agentState?.origin, this.userId),
               finalState: agentState,
               operationId,
               stepIndex,
               steps: agentState?.stepCount || 0,
-              userId: beforeStepOrigin.userId || this.userId,
             },
             agentState?.host?.hooks,
           );
@@ -2460,7 +2486,7 @@ export class AgentRuntimeService {
             operationId,
             'afterStep',
             {
-              agentId: origin.agentId || '',
+              ...buildLifecycleHookContext(operationId, stepResult.newState?.origin, this.userId),
               content,
               elapsedMs,
               executionTimeMs: stepPresentationData.executionTimeMs,
@@ -2486,7 +2512,7 @@ export class AgentRuntimeService {
               totalOutputTokens: stepPresentationData.totalOutputTokens,
               totalSteps: stepPresentationData.totalSteps,
               totalTokens: stepPresentationData.totalTokens,
-              totalToolCalls: (tracking.totalToolCalls ?? 0) + (toolsCalling?.length ?? 0),
+              totalToolCalls: stepResult.newState?.usage?.tools?.totalCalls ?? 0,
               userId: origin.userId || this.userId,
             },
             stepResult.newState?.host?.hooks,
@@ -2704,6 +2730,9 @@ export class AgentRuntimeService {
         };
       });
     } catch (error) {
+      // Delivery failures retry the existing completion lifecycle; they are not Agent errors.
+      if (error instanceof CriticalHookDeliveryError) throw error;
+
       const isInterventionPersistenceFailure =
         error instanceof CriticalAgentInterventionPersistenceError;
       invokeAgentSpan.recordException(error as Error);
@@ -2762,11 +2791,12 @@ export class AgentRuntimeService {
 
       try {
         const errorState = await this.coordinator.loadAgentState(operationId);
+        const observedState = errorState ?? lastLoadedState.current;
         finalStateWithError = {
-          ...errorState!,
+          ...observedState,
           error: formattedError,
           metadata: {
-            ...errorState?.metadata,
+            ...observedState?.metadata,
             externalRetryCount,
           },
           status: 'error' as const,
@@ -2776,8 +2806,9 @@ export class AgentRuntimeService {
         log('[%s] Failed to load error state (infra may be down): %O', operationId, loadError);
         // Fallback: construct a minimal error state so callbacks still receive useful info
         finalStateWithError = {
+          ...lastLoadedState.current,
           error: formattedError,
-          metadata: { externalRetryCount },
+          metadata: { ...lastLoadedState.current?.metadata, externalRetryCount },
           status: 'error' as const,
           stepCount: stepIndex,
         };
@@ -4312,6 +4343,7 @@ export class AgentRuntimeService {
     // Create Agent Runtime instance
     const runtime = new AgentRuntime(agent as any, {
       executors: createRuntimeExecutors(executorContext),
+      prepareTools: createRuntimeToolPreparation(executorContext),
     });
 
     return { agent, runtime };

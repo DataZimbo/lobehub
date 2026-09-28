@@ -1,5 +1,9 @@
 import type { AgentRuntimeHost } from '../transport';
-import type { AgentEvent, AgentInstruction, AnyHookEvent, InstructionExecutor } from '../types';
+import type { AgentEvent, AgentInstruction, InstructionExecutor } from '../types';
+import {
+  buildBeforeHumanInterventionEvent,
+  buildHumanInterventionHookContext,
+} from '../utils/humanInterventionHooks';
 
 /**
  * `request_human_approve` executor — pauses the operation for human tool
@@ -21,7 +25,7 @@ export const requestHumanApprove =
       supersedes: instructionSupersedes,
     } = instruction as Extract<AgentInstruction, { type: 'request_human_approve' }>;
     const { operation, transports, lifecycle } = host;
-    const { operationId, stepIndex, userId } = operation;
+    const { operationId, stepIndex } = operation;
     const agentId = operation.agentId ?? state.origin?.agentId;
     const groupId = operation.groupId ?? state.origin?.groupId;
     const threadId = operation.threadId ?? state.origin?.threadId;
@@ -41,15 +45,14 @@ export const requestHumanApprove =
     // Fire-and-forget lifecycle hook (webhook configs carried via state).
     lifecycle
       ?.dispatch({
-        event: {
-          operationId,
-          pendingTools: pendingToolsCalling.map((t: any) => ({
-            apiName: t.apiName,
-            identifier: t.identifier,
-          })),
-          stepIndex,
-          userId,
-        } as AnyHookEvent,
+        event: buildBeforeHumanInterventionEvent(
+          {
+            ...buildHumanInterventionHookContext(state, operation),
+            assistantMessageId: parentMessageId,
+            stepIndex,
+          },
+          pendingToolsCalling,
+        ),
         serializedHooks: state.host?.hooks,
         type: 'beforeHumanIntervention',
       })
@@ -81,7 +84,14 @@ export const requestHumanApprove =
     // pending tool messages or (in resumption mode) by looking up existing ones.
     const toolMessageIds: Record<string, string> = {};
     let approvalAssistantMessageId = parentMessageId;
-    let supersedes: { batchId: string; operationId: string; toolCallIds: string[] } | undefined;
+    let supersedes:
+      | {
+          batchId: string;
+          operationId: string;
+          reapprovedToolCallIds?: string[];
+          toolCallIds: string[];
+        }
+      | undefined;
 
     if (skipCreateToolMessage) {
       // The payloads came from the authoritative pending tool rows. Preserve
@@ -150,7 +160,10 @@ export const requestHumanApprove =
       }
       for (const toolPayload of pendingToolsCalling) {
         const existing = dbMessages.find(
-          (m: any) => m.role === 'tool' && m.tool_call_id === toolPayload.id,
+          (m: any) =>
+            m.role === 'tool' &&
+            m.tool_call_id === toolPayload.id &&
+            m.parentId === parentMessageId,
         );
         if (!existing) {
           throw new Error(
@@ -181,6 +194,17 @@ export const requestHumanApprove =
             stepIndex,
           }),
         ),
+      );
+      await Promise.all(
+        pendingToolsCalling.map(async (tool) => {
+          const preparation = state.toolPreparations?.[tool.id];
+          if (preparation)
+            await transports.messages.updateToolCall?.(
+              toolMessageIds[tool.id],
+              tool.arguments,
+              preparation,
+            );
+        }),
       );
     } else {
       // Resolve the assistant message that owns these tool calls.
@@ -264,6 +288,7 @@ export const requestHumanApprove =
           groupId: groupId ?? parentAssistant.groupId ?? undefined,
           parentId: parentAssistant.id,
           plugin: toolPayload as any,
+          pluginState: { hookPreparation: state.toolPreparations?.[toolPayload.id] },
           pluginIntervention: {
             batchId,
             itemIndex,

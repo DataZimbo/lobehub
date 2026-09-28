@@ -92,6 +92,69 @@ describe('requestHumanApprove', () => {
     },
   ] as unknown as AgentState['messages'];
 
+  it.each([1, 2])(
+    'notifies with native ids and the same effective arguments as %i approval cards',
+    async (count) => {
+      const tools = Array.from({ length: count }, (_, index) => ({
+        ...pendingTool,
+        arguments: JSON.stringify({ path: `/effective/${index}`, nested: { approved: true } }),
+        id: `native-call-${index}`,
+      }));
+      const hooks = [
+        {
+          id: 'before-human',
+          type: 'beforeHumanIntervention' as const,
+          webhook: { url: 'https://example.com/hook' },
+        },
+      ];
+      const state = createState({
+        host: { hooks },
+        origin: {
+          agentId: 'agent-origin',
+          lineage: { parentOperationId: 'real-parent' },
+          sourceMessageId: 'user-source',
+          topicId: 'topic-origin',
+        },
+      });
+
+      const result = await requestHumanApprove(host)(
+        {
+          parentMessageId: 'assistant-current',
+          pendingToolsCalling: tools,
+          type: 'request_human_approve',
+        },
+        state,
+      );
+
+      const notification = vi.mocked(host.lifecycle!.dispatch).mock.calls[0][0];
+      expect(notification).toMatchObject({
+        event: {
+          agentId: 'agent-origin',
+          assistantMessageId: 'assistant-current',
+          operationId: 'op-1',
+          parentOperationId: 'real-parent',
+          sourceMessageId: 'user-source',
+          topicId: 'topic-origin',
+          pendingTools: tools.map((tool) => ({
+            apiName: tool.apiName,
+            identifier: tool.identifier,
+            toolCallId: tool.id,
+            args: JSON.parse(tool.arguments),
+            arguments: tool.arguments,
+          })),
+        },
+        serializedHooks: hooks,
+        type: 'beforeHumanIntervention',
+      });
+      expect(createToolMessage.mock.calls.map(([message]) => message.plugin)).toEqual(tools);
+      expect(vi.mocked(host.transports.stream.publishChunk).mock.calls[0][0]).toMatchObject({
+        toolsCalling: tools,
+      });
+      expect(result.newState.host?.hooks).toEqual(hooks);
+      expect(result.newState.pendingToolsCalling).toEqual(tools);
+    },
+  );
+
   /**
    * Regression: scanning `state.messages` for the last `role: 'assistant'` skips
    * the rehydrated `assistantGroup` that actually owns these tool calls and
@@ -153,7 +216,12 @@ describe('requestHumanApprove', () => {
     };
 
     query.mockResolvedValue([
-      { id: 'tool-msg-existing', role: 'tool', tool_call_id: 'call_ask_1' },
+      {
+        id: 'tool-msg-existing',
+        parentId: 'assistant-current',
+        role: 'tool',
+        tool_call_id: 'call_ask_1',
+      },
     ]);
 
     await requestHumanApprove(host)(instruction, createState());
@@ -190,8 +258,18 @@ describe('requestHumanApprove', () => {
       },
     };
     query.mockResolvedValue([
-      { id: 'tool-msg-existing-1', role: 'tool', tool_call_id: 'call_ask_1' },
-      { id: 'tool-msg-existing-2', role: 'tool', tool_call_id: 'call_ask_2' },
+      {
+        id: 'tool-msg-existing-1',
+        parentId: 'assistant-current',
+        role: 'tool',
+        tool_call_id: 'call_ask_1',
+      },
+      {
+        id: 'tool-msg-existing-2',
+        parentId: 'assistant-current',
+        role: 'tool',
+        tool_call_id: 'call_ask_2',
+      },
     ]);
 
     const result = await requestHumanApprove(host)(
@@ -267,7 +345,12 @@ describe('requestHumanApprove', () => {
 
     beforeEach(() => {
       query.mockResolvedValue([
-        { id: 'tool-msg-existing', role: 'tool', tool_call_id: 'call_ask_1' },
+        {
+          id: 'tool-msg-existing',
+          parentId: 'assistant-msg-1',
+          role: 'tool',
+          tool_call_id: 'call_ask_1',
+        },
       ]);
     });
 

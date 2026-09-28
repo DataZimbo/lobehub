@@ -713,6 +713,7 @@ describe('MessageModel Update Tests', () => {
         .where(eq(messagePlugins.id, 'approval-preserves-identity'));
       expect(plugin.intervention).toEqual({
         ...pendingIdentity,
+        approvedArguments: '{"path":"/tmp/a"}',
         resolutionRequestId: 'resolution-1',
         status: 'approved',
       });
@@ -830,6 +831,50 @@ describe('MessageModel Update Tests', () => {
   });
 
   describe('updateToolMessage', () => {
+    it('persists rewrite and original snapshot atomically while retaining the reviewed input', async () => {
+      const id = 'tool-hook-input';
+      await serverDB.insert(messages).values({ id, role: 'tool', content: '', userId });
+      await serverDB.insert(messagePlugins).values({
+        id,
+        userId,
+        arguments: '{"path":"reviewed"}',
+        intervention: { status: 'pending' },
+        state: { existing: true },
+      });
+      await messageModel.resolveHumanApproval([
+        { id, intervention: { status: 'approved', resolutionRequestId: 'approval-1' } },
+      ]);
+      const hookPreparation = {
+        originalArgs: { path: 'original' },
+        effectiveArgs: { path: 'rewritten' },
+        approvalArgs: { path: 'reviewed' },
+        status: 'ready',
+      };
+      expect(
+        (
+          await messageModel.updateToolMessage(id, {
+            pluginArguments: '{"path":"rewritten"}',
+            pluginState: { hookPreparation },
+          })
+        ).success,
+      ).toBe(true);
+      const plugin = await messageModel.findMessagePlugin(id);
+      expect(plugin).toMatchObject({
+        arguments: '{"path":"rewritten"}',
+        intervention: { approvedArguments: '{"path":"reviewed"}' },
+        state: { existing: true, hookPreparation },
+      });
+      const other = new MessageModel(serverDB, otherUserId);
+      expect(
+        (
+          await other.updateToolMessage(id, {
+            pluginArguments: '{}',
+            pluginState: { hookPreparation: {} },
+          })
+        ).success,
+      ).toBe(false);
+      expect((await messageModel.findMessagePlugin(id))?.arguments).toBe('{"path":"rewritten"}');
+    });
     it('should update content only', async () => {
       await serverDB.insert(messages).values({
         id: 'tool-msg-1',

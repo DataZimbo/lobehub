@@ -82,6 +82,16 @@ export interface ToolRunExecution {
   toolMessageId?: string;
 }
 
+/** Serializable control result persisted with the tool record and execution state. */
+export interface ToolCallPreparation {
+  additionalContexts?: { hookId: string; text: string }[];
+  approvalArgs?: Record<string, unknown>;
+  effectiveArgs?: Record<string, unknown>;
+  originalArgs: Record<string, unknown>;
+  reason?: string;
+  status: 'ready' | 'blocked' | 'cancelled';
+}
+
 /**
  * Per-call context the runtime knows at the moment of a tool call. The heavy
  * server context (tool manifest map, sub-agent / group-member runners, DB
@@ -111,6 +121,8 @@ export interface ToolRunContext {
   messageId?: string;
   mode: 'batch' | 'single';
   operationId: string;
+  /** Original arguments retained by tool preparation before input replacement. */
+  originalArgs?: Record<string, unknown>;
   parentMessageId: string;
   parsedArgs: Record<string, unknown>;
   /** Reuse the parent tool message when resuming after intervention. */
@@ -152,6 +164,8 @@ export interface ToolTransport {
    * {@link ToolRunResult.workRegistration} intent. Called by the executor
    * AFTER usage accumulation so the registration carries the cumulative cost.
    */
+  /** Controls only; must run before permission/approval and lane planning. */
+  prepare?: (call: ChatToolPayload, context: ToolRunContext) => Promise<ToolCallPreparation>;
   registerWork?: (registration: ToolWorkRegistration, state: AgentState) => Promise<void>;
   run: (call: ChatToolPayload, context: ToolRunContext) => Promise<ToolRunExecution>;
   shouldRetry?: (kind: RuntimeRetryKind, attempt: number, maxRetries: number) => boolean;

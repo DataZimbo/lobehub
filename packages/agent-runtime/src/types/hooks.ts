@@ -1,6 +1,15 @@
-import type { ChatErrorBudgetContext, ChatErrorHeterogeneousContext } from '@lobechat/types';
+import type {
+  ChatErrorBudgetContext,
+  ChatErrorHeterogeneousContext,
+  ExecutionPlan,
+  ToolExecutor,
+} from '@lobechat/types';
 
 import type { ToolRunResult } from '../transport/tool';
+import type { CompactHookContext } from './compactHooks';
+import type { AgentRunLineage } from './state';
+
+export type { CompactHookContext } from './compactHooks';
 
 /**
  * Agent Runtime Hook Types
@@ -19,7 +28,7 @@ export type AgentHookType =
   | 'beforeStep' // Before each step executes
   | 'beforeToolCall' // Before a tool call executes (supports mocking via event.mock())
   | 'beforeCallAgent' // Before calling a sub-agent
-  | 'afterCallAgent' // After sub-agent completes
+  | 'afterCallAgent' // After sub-agent creation/start returns, not when the child completes
   | 'beforeCompact' // Before context compression starts
   | 'beforeHumanIntervention' // Before agent pauses for human approval
   | 'afterCompact' // After context compression completes
@@ -82,7 +91,8 @@ export interface AgentHookEvent {
    */
   errorBudget?: ChatErrorBudgetContext;
   // Content
-  errorDetail?: string;
+  /** Original structured runtime error; preserved without flattening to a message. */
+  errorDetail?: unknown;
   errorHeterogeneous?: ChatErrorHeterogeneousContext;
 
   errorMessage?: string;
@@ -104,16 +114,21 @@ export interface AgentHookEvent {
    */
   finalState?: any;
 
+  groupId?: string;
   lastAssistantContent?: string;
   /** Last LLM content from previous steps — for showing context during tool execution (afterStep only) */
   lastLLMContent?: string;
   /** Last tools calling from previous steps (afterStep only) */
   lastToolsCalling?: any;
-  llmCalls?: number;
+  /** Existing run lineage only; no inferred parent or root operation. */
+  lineage?: AgentRunLineage;
 
+  llmCalls?: number;
   // Caller-provided metadata (from webhook.body)
   metadata?: Record<string, unknown>;
   operationId: string;
+  parentOperationId?: string;
+
   // Execution result
   reason?: string; // 'done' | 'error' | 'interrupted' | 'max_steps' | 'cost_limit'
   /** LLM reasoning / thinking content (afterStep only) */
@@ -124,90 +139,106 @@ export interface AgentHookEvent {
   /** Step cost (afterStep only, LLM steps) */
   stepCost?: number;
   stepIndex?: number;
-
   /** Step label for display (e.g. graph node name when using GraphAgent) */
   stepLabel?: string;
   steps?: number;
+
   stepType?: string; // 'call_llm' | 'call_tool'
   /** Whether next step is LLM thinking (afterStep only) */
   thinking?: boolean;
-
+  threadId?: string;
   toolCalls?: number;
+
   /** Tools the LLM decided to call (afterStep only) */
   toolsCalling?: any;
   /** Results from tool execution (afterStep only) */
   toolsResult?: any;
   topicId?: string;
-  /** Cumulative total cost (afterStep only) */
+  /** Cumulative total cost (afterStep and terminal events) */
   totalCost?: number;
-  /** Cumulative input tokens (afterStep only) */
+  /** Cumulative input tokens (afterStep and terminal events) */
   totalInputTokens?: number;
-  /** Cumulative output tokens (afterStep only) */
+  /** Cumulative output tokens (afterStep and terminal events) */
   totalOutputTokens?: number;
-  /** Total steps executed so far (afterStep only) */
+  /** Total steps executed so far (afterStep and terminal events) */
   totalSteps?: number;
   totalTokens?: number;
-  /** Running total of tool calls across all steps (afterStep only) */
+  /** Executed tool calls from runtime usage (afterStep and terminal events) */
   totalToolCalls?: number;
-
   userId: string;
+
+  workspaceId?: string;
+}
+
+/**
+ * Correlation and routing facts shared by tool lifecycle notifications.
+ * Additive fields stay optional for existing hook producers; the server transport
+ * supplies native toolCallId and originalArgs on every invocation.
+ */
+export interface ToolCallHookContext {
+  /** Device selected by the run's execution plan and access policy, if any. */
+  activeDeviceId?: string;
+  agentId?: string;
+  apiName: string;
+  /** Effective arguments used for this invocation. */
+  args: Record<string, any>;
+  /** Assistant message owning the call, distinct from the source user message. */
+  assistantMessageId?: string;
+  callIndex: number;
+  documentId?: string;
+  /** Effective run execution target, when the run has an execution plan. */
+  executionTarget?: ExecutionPlan['target'];
+  /** Transport dispatch destination; independent of the tool's origin. */
+  executor?: ToolExecutor;
+  groupId?: string;
+  identifier: string;
+  operationId: string;
+  /** Arguments before hook input replacement. */
+  originalArgs?: Record<string, unknown>;
+  /** Only present when the run has an actual parent operation in its lineage. */
+  parentOperationId?: string;
+  sessionId?: string;
+  sourceMessageId?: string;
+  stepIndex: number;
+  taskId?: string;
+  threadId?: string;
+  /** Native model/runtime call id, never synthesized from callIndex. */
+  toolCallId?: string;
+  /** Existing tool message on resume; absent before a new message is created. */
+  toolMessageId?: string;
+  toolSource?: string;
+  topicId?: string;
+  userId?: string;
+  workspaceId?: string;
 }
 
 /**
  * Event payload for beforeToolCall hooks.
  * Call `mock()` to skip real tool execution and return a fake result.
  */
-export interface ToolCallHookEvent {
-  apiName: string;
-  args: Record<string, any>;
-  callIndex: number;
-  identifier: string;
+export interface ToolCallHookEvent extends ToolCallHookContext {
   /** Returns false when an earlier hook already won the mock slot. */
   mock: (result: ToolRunResult) => boolean;
-  operationId: string;
-  stepIndex: number;
 }
 
-/**
- * Event payload for beforeToolCall observation dispatch (webhook/logging).
- * Same fields as ToolCallHookEvent but without mock() — used for production webhook delivery.
- */
-export interface BeforeToolCallObservationEvent {
-  apiName: string;
-  args: Record<string, any>;
-  callIndex: number;
-  identifier: string;
-  operationId: string;
-  stepIndex: number;
-  userId?: string;
-}
+/** beforeToolCall notification payload, without the local mock callback. */
+export type BeforeToolCallObservationEvent = ToolCallHookContext;
 
-export interface AfterToolCallHookEvent {
-  apiName: string;
-  args: Record<string, any>;
-  callIndex: number;
+export interface AfterToolCallHookEvent extends ToolCallHookContext {
+  /** Legacy text projection of result.content. */
   content: string;
   executionTimeMs: number;
-  identifier: string;
   mocked: boolean;
-  operationId: string;
-  stepIndex: number;
+  /** Structured result after archival, including errors and state (e.g. blocked). */
+  result?: ToolRunResult;
   success: boolean;
-  userId?: string;
 }
 
-export interface ToolCallErrorHookEvent {
-  apiName: string;
-  args: Record<string, any>;
-  callIndex: number;
+export interface ToolCallErrorHookEvent extends ToolCallHookContext {
   error: string;
-  identifier: string;
-  operationId: string;
-  stepIndex: number;
-  userId?: string;
 }
 
-export interface BeforeCompactHookEvent {
+export interface BeforeCompactHookEvent extends CompactHookContext {
   messageCount: number;
   operationId: string;
   stepIndex: number;
@@ -215,7 +246,7 @@ export interface BeforeCompactHookEvent {
   userId?: string;
 }
 
-export interface AfterCompactHookEvent {
+export interface AfterCompactHookEvent extends CompactHookContext {
   groupId: string;
   messagesAfter: number;
   messagesBefore: number;
@@ -225,7 +256,7 @@ export interface AfterCompactHookEvent {
   userId?: string;
 }
 
-export interface CompactErrorHookEvent {
+export interface CompactErrorHookEvent extends CompactHookContext {
   error: string;
   operationId: string;
   stepIndex: number;
@@ -233,26 +264,55 @@ export interface CompactErrorHookEvent {
   userId?: string;
 }
 
-export interface BeforeHumanInterventionHookEvent {
-  operationId: string;
-  pendingTools: Array<{ apiName: string; identifier: string }>;
+/** Run identity shared with tool notifications; never infer lineage from a resume. */
+export type HumanInterventionHookContext = Pick<
+  ToolCallHookContext,
+  | 'agentId'
+  | 'assistantMessageId'
+  | 'documentId'
+  | 'groupId'
+  | 'operationId'
+  | 'parentOperationId'
+  | 'sessionId'
+  | 'sourceMessageId'
+  | 'taskId'
+  | 'threadId'
+  | 'topicId'
+  | 'userId'
+  | 'workspaceId'
+>;
+
+export interface HumanInterventionPendingTool {
+  apiName: string;
+  /** Effective parsed arguments from the same payload used by the approval card. */
+  args?: Record<string, unknown>;
+  /** Exact approval-card arguments, also retained when they cannot be parsed. */
+  arguments?: string;
+  identifier: string;
+  /** Native call id; optional for compatibility with existing producers. */
+  toolCallId?: string;
+}
+
+export interface BeforeHumanInterventionHookEvent extends HumanInterventionHookContext {
+  pendingTools: HumanInterventionPendingTool[];
   stepIndex: number;
-  userId?: string;
 }
 
-export interface AfterHumanInterventionHookEvent {
+export interface AfterHumanInterventionHookEvent extends HumanInterventionHookContext {
   action: 'approve' | 'reject' | 'rejectAndContinue';
-  operationId: string;
   rejectionReason?: string;
   toolCallId?: string;
-  userId?: string;
+  /** All native calls resolved by this action, not unresolved batch siblings. */
+  toolCallIds?: string[];
 }
 
-export interface StopByHumanInterventionHookEvent {
-  operationId: string;
+export interface StopByHumanInterventionHookEvent extends HumanInterventionHookContext {
+  /** Existing runtime stop reason, distinct from the user's rejection text. */
+  reason?: string;
   rejectionReason?: string;
   toolCallId?: string;
-  userId?: string;
+  /** All pending native calls affected by stopping the operation. */
+  toolCallIds?: string[];
 }
 
 export interface BeforeCallAgentHookEvent {
@@ -262,12 +322,14 @@ export interface BeforeCallAgentHookEvent {
   userId?: string;
 }
 
+/** Reports the creation/start result; child completion belongs to its onComplete hook. */
 export interface AfterCallAgentHookEvent {
   agentId: string;
   operationId: string;
   subOperationId: string;
   success: boolean;
-  threadId: string;
+  /** Isolated child thread, when available; shared group members have no isolated thread. */
+  threadId?: string;
   userId?: string;
 }
 
