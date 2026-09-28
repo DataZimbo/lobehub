@@ -40,6 +40,11 @@ import { basicContextSchema } from './_schema/context';
 
 const { logTiming, runTimedStage } = createTimingHelpers('lobe-server:chat:lobehub:timing');
 
+/** Upper bound on rounds per `getMessagesByCursor` page. */
+const MAX_CURSOR_ROUND_LIMIT = 50;
+/** Upper bound on rows scanned per `getMessagesByCursor` page (the model's default cap). */
+const MAX_CURSOR_COUNT_BUDGET = 2000;
+
 /** Ctx slice consumed by the conversation General-access guards. */
 const guardCtx = (ctx: {
   serverDB: Parameters<typeof assertCanUseMessageTargets>[0]['db'];
@@ -530,17 +535,22 @@ export const messageRouter = router({
     .input(
       z.object({
         agentId: z.string().nullish(),
-        countBudget: z.number().optional(),
+        // Bounded at the API boundary: the model turns this into a row LIMIT, so
+        // an unbounded value would let any caller (incl. anonymous share
+        // visitors) force an arbitrarily large scan of a long topic.
+        countBudget: z.number().int().positive().max(MAX_CURSOR_COUNT_BUDGET).optional(),
         cursor: z.object({ createdAt: z.string(), id: z.string() }).nullish(),
-        roundLimit: z.number().optional(),
+        roundLimit: z.number().int().positive().max(MAX_CURSOR_ROUND_LIMIT).optional(),
         sessionId: z.string().nullish(),
         skipWorks: z.boolean().optional(),
-        topicId: z.string(),
+        // Optional so share-link callers can page with only `topicShareId`; the
+        // share record supplies the authoritative topic. Required otherwise.
+        topicId: z.string().nullish(),
         topicShareId: z.string().optional(),
       }),
     )
     .query(async ({ input, ctx }) => {
-      const { topicShareId, ...queryParams } = input;
+      const { topicShareId, topicId, ...queryParams } = input;
 
       // Public access via topicShareId
       if (topicShareId) {
@@ -550,11 +560,13 @@ export const messageRouter = router({
           ctx.userId ?? undefined,
         );
 
+        // Same scoping as `getMessages`: workspace shares carry their workspaceId,
+        // and the classic share link is a creator topic (no visitor scope).
         const shareWorkspaceId = share.workspaceId ?? undefined;
         const messageModel = new MessageModel(ctx.serverDB, share.ownerId, shareWorkspaceId);
         const fileService = new FileService(ctx.serverDB, share.ownerId, shareWorkspaceId);
 
-        return messageModel.queryTopicMessagesByCursor(
+        const page = await messageModel.queryTopicMessagesByCursor(
           // Force skipWorks: Work summaries join LIVE task/version state, so serving
           // them here would leak post-share mutations to anonymous visitors.
           { ...queryParams, skipWorks: true, topicId: share.topicId },
@@ -563,6 +575,8 @@ export const messageRouter = router({
               fileService.getFileAccessUrl({ id: file.id, url: path }),
           },
         );
+
+        return { ...page, messages: projectSharedTopicMessages(page.messages) };
       }
 
       // Authenticated access - require userId
@@ -570,13 +584,35 @@ export const messageRouter = router({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
       }
 
+      if (!topicId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'topicId is required' });
+      }
+
+      // Same General-access guard `getMessages` applies to a raw client topicId.
+      await assertCanUseTopicTargets(
+        guardCtx({ serverDB: ctx.serverDB, userId: ctx.userId, workspaceId: ctx.workspaceId }),
+        [topicId],
+      );
+
       const wsId = ctx.workspaceId ?? undefined;
       const messageModel = new MessageModel(ctx.serverDB, ctx.userId, wsId);
       const fileService = new FileService(ctx.serverDB, ctx.userId, wsId);
 
-      return messageModel.queryTopicMessagesByCursor(queryParams, {
-        postProcessUrl: (path, file) => fileService.getFileAccessUrl({ id: file.id, url: path }),
-      });
+      const page = await messageModel.queryTopicMessagesByCursor(
+        { ...queryParams, topicId },
+        {
+          postProcessUrl: (path, file) => fileService.getFileAccessUrl({ id: file.id, url: path }),
+        },
+      );
+
+      // Reads through its own `MessageModel`, so apply the tool view-model step
+      // explicitly — same as `getMessages`.
+      return {
+        ...page,
+        messages: await new MessageService(ctx.serverDB, ctx.userId, wsId).projectToolPayloads(
+          page.messages,
+        ),
+      };
     }),
 
   rankModels: messageProcedure.query(async ({ ctx }) => {
