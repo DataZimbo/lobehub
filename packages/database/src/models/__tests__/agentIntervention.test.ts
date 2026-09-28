@@ -1795,6 +1795,15 @@ describe('AgentInterventionModel', () => {
         otherUserModel.createBatchWithSupersession({ batch, supersedes }),
       ).rejects.toThrow();
       const result = await model.createBatchWithSupersession({ batch, supersedes });
+      // The in-place row moved to a new batch; the cross-operation old row
+      // is terminal. Neither old token/revision can authorize the rewrite.
+      expect(await claim(original, { type: 'approve' }, { actorId: ownerId })).toMatchObject({
+        outcome: sameOperation ? 'not_found' : 'conflict',
+      });
+      const oldToken = await model.findByReviewTokenHash(original[0].reviewTokenHash);
+      if (sameOperation) expect(oldToken).toBeUndefined();
+      else expect(oldToken).toMatchObject({ status: 'session_ended' });
+      expect(result.interventions[0].reviewTokenHash).not.toBe(original[0].reviewTokenHash);
       expect(result.interventions.map(({ status }) => status)).toEqual(['pending', 'pending']);
       expect(result.superseded?.interventions.map(({ status }) => status)).toEqual([
         'session_ended',

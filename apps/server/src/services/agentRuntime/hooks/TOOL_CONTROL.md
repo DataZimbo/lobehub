@@ -55,8 +55,46 @@ with a different request revision. Cross-operation continuations create a new
 review batch. In-place recovery rotates the existing member's review token and
 request revision atomically because `(operationId, toolCallId)` is unique. The
 old resolution remains in the existing resolution ledger. Same-request replay is
-idempotent. Any business-server overlay implementing `notifyAgentIntervention`
-must forward this optional supersedes field to `createBatchWithSupersession`.
+idempotent. Old token/revision snapshots cannot approve the rewritten request.
+
+### Cloud supersession integration boundary
+
+The OSS runtime builds this field in
+`apps/server/src/services/agentRuntime/agentInterventionNotification.ts`.
+`CompletionLifecycle.notifyPendingAgentIntervention` passes the DTO through
+`@/business/server/agent-run/agentInterventionReview`. In this repository that
+alias resolves to `packages/business-server/src/agent-run/agentInterventionReview.ts`:
+its interface includes the field, but `notifyAgentInterventionRequired` is an
+intentional no-op. The durable implementation is Cloud-specific.
+
+The local Cloud checkout was inspected read-only at
+`4b2a32725fa3da5fe28b94d9ffb74697f2d0d8e7`; these files had no local edits:
+
+- `src/business/server/agent-run/agentInterventionReview.ts` binds the v2 wrapper.
+- `src/server/services/agentIntervention/wrapperV2.ts` passes the entire notification
+  to `notification.notifyRequired(params)`.
+- `src/server/services/agentIntervention/deliveryV2.ts` passes the entire
+  `notification.supersedes` object to its `createBatchWithSupersession` dependency.
+- `src/server/services/agentIntervention/defaultDeliveryV2.ts` passes that same
+  `supersedes` object to `AgentInterventionModel.createBatchWithSupersession`.
+
+This inspected implementation already preserves additive fields; no extra Cloud
+source edit is required for `reapprovedToolCallIds`. Cloud must still integrate
+C2's database model/types from the OSS dependency. Its existing
+`deliveryV2.test.ts` asserts whole-object supersedes forwarding, but does not
+specifically exercise this new field; those external tests were not run here.
+C2 tests explicitly cover runtime DTO forwarding and both same-operation and
+cross-operation database reapproval, including old token/revision rejection.
+D still needs to verify the deployed overlay and an actual partial/mixed review.
+
+If an older/different overlay strips the field, same-operation supersession is
+rejected (no declared reapproved members); cross-operation reapproval also fails
+its exact old-pending-member check when already-decided members are included.
+The durable new review cannot be published and the parked lifecycle reports a
+persistence failure. This is an availability/integration failure, not permission
+to execute changed input under the old approval. If the overlay lacks the entire
+supersession dependency, the inspected Cloud code throws
+`AGENT_INTERVENTION_SUPERSESSION_UNAVAILABLE` before creating a new review.
 
 ## Additional context
 
