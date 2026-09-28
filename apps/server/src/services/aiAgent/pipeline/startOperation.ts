@@ -154,6 +154,16 @@ export const startOperation = async (
     const sourceState = approvalSourceOperationId
       ? await deps.agentRuntimeService.loadInterventionContinuationState(approvalSourceOperationId)
       : null;
+    // A missing (for example TTL-expired) source cannot prove that no controls
+    // were configured. Never recreate an approval continuation with empty hooks
+    // and execute its original input under a different policy. Ready deterministic
+    // continuations have already returned through the reuse path with their own
+    // persisted hooks; only a new/rebuilt continuation needs the source here.
+    if (approvalSourceOperationId && !sourceState) {
+      throw new Error(
+        `Approval source runtime state is missing or expired: ${approvalSourceOperationId}`,
+      );
+    }
     const continuationHooks = approvalSourceOperationId
       ? hookDispatcher.getContinuationHooks(approvalSourceOperationId, sourceState?.host?.hooks)
       : [];

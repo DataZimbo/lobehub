@@ -785,11 +785,22 @@ describe('MessageModel Update Tests', () => {
 
     it('restores the exact pre-claim snapshot only for the owning resolution request', async () => {
       await seedPendingTool('approval-rollback');
+      const effectiveArgs = { content: 'reviewed B', path: '/tmp/B.txt' };
+      const hookPreparation = {
+        additionalContexts: [{ hookId: 'control', text: 'context B' }],
+        effectiveArgs,
+        originalArgs: { content: 'original A', path: '/tmp/A.txt' },
+        status: 'ready',
+      };
+      await messageModel.updateToolMessage('approval-rollback', {
+        pluginArguments: JSON.stringify(effectiveArgs),
+        pluginState: { hookPreparation },
+      });
       const original = {
         content: 'pending content',
         id: 'approval-rollback',
         intervention: pendingIdentity,
-        pluginState: { preserved: true },
+        pluginState: { preserved: true, hookPreparation },
       };
 
       await messageModel.resolveHumanApproval([
@@ -811,6 +822,7 @@ describe('MessageModel Update Tests', () => {
         .where(eq(messagePlugins.id, original.id));
       expect(message.content).toBe('approved content');
       expect(plugin.intervention).toMatchObject({
+        approvedArguments: JSON.stringify(effectiveArgs),
         resolutionRequestId: 'resolution-owner',
         status: 'approved',
       });
@@ -827,6 +839,10 @@ describe('MessageModel Update Tests', () => {
       expect(message.content).toBe(original.content);
       expect(plugin.intervention).toEqual(original.intervention);
       expect(plugin.state).toEqual(original.pluginState);
+      // A startup failure must not replace the still-reviewed B with original A
+      // or discard its context when the owning legacy claim is rolled back.
+      expect(plugin.arguments).toBe(JSON.stringify(effectiveArgs));
+      expect(plugin.toolCallId).toBe('call-approval-rollback');
     });
   });
 

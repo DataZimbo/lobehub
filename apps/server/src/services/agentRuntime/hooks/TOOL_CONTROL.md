@@ -59,6 +59,17 @@ arguments. A changed input re-enters the normal agent permission/audit path;
 `human_approved_tool` cannot grant approval for the changed request. A new deny
 produces a blocked result with no execution.
 
+A new or rebuilt continuation requires the authoritative source runtime state.
+If it is missing (including after the state manager's two-hour TTL), startup
+fails explicitly before creating/scheduling an operation; absence is never
+interpreted as an empty hook list. Legacy approval claims are rolled back to
+their prior tool snapshots, leaving the reviewed effective input and context
+intact. Generic durable claims retain their existing same-request retry ownership
+and report the error without scheduling a worker or dispatching notifications.
+A ready deterministic continuation can still resume from its own persisted
+hooks/events after the older source expires. This does not extend the source TTL
+or reconstruct lost hook configuration from tool input/context fragments.
+
 When a changed call needs human approval again, reuse its tool message and
 supersede the review batch, carrying all still-pending siblings. The generic
 `supersedes.reapprovedToolCallIds` field identifies decided members being reopened
