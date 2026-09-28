@@ -6,6 +6,8 @@
  *   DASHBOARD_SANDBOX_URL=https://<worker>.workers.dev \
  *   DASHBOARD_SANDBOX_TOKEN="$(cat /path/to/token)" \
  *   bunx vitest run apps/server/src/services/dashboard/__tests__/sandboxRunner.live.test.ts
+ *
+ * Node's fetch ignores HTTPS_PROXY; behind a proxy also set NODE_USE_ENV_PROXY=1.
  */
 import { describe, expect, it } from 'vitest';
 
