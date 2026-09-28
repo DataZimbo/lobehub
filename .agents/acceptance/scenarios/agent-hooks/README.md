@@ -6,6 +6,7 @@ Status: preparation only. Starting revision `66af6210de918a26394f9afe5a389ac99c3
 
 - `plan.json`: 31 stable user-outcome criteria, using Acceptance's existing `plan[]` schema. No test/lint/type gate masquerades as acceptance.
 - `mapping.md`: requirement mapping, fixtures, observations, and evidence rules.
+- `c1-interface.md`: pinned C1 interface observations, harness binding design and temporary unsupported-response boundary; no C1 integration or execution.
 - `receiver.ts`, `responses.ts`, `harness.ts`: temporary HTTP fixtures and the real server `execAgent({ hooks })` entry seam. No product configuration endpoint.
 - `self-check.ts`: verifies fixture server behavior only; does not exercise LobeHub.
 - `protocol.{en,zh-CN}.draft.md`: unpublished bilingual drafts, eventual location `docs/development/basic/agent-runtime-hooks{,.zh-CN}.mdx` after final verification.
@@ -57,7 +58,7 @@ Repeat with `AGENT_RUNTIME_MODE=queue` and a healthy QStash + real callback work
 
 For worker replacement use two owned app processes sharing only the isolated test DB/Redis, and a recorded queue barrier. Do not simulate the worker swap with a second dispatcher in one process. Do not use the production debug proxy to claim backend branch coverage.
 
-The continued preflight has now prepared D-owned dependencies, migrated Postgres/Redis, local QStash and S3, and a seeded CLI login. See `environment.md` for current state and restart commands. This does not enable final Hook execution before the coordinator supplies the integrated base. The initial missing-eslint checkpoint remains historical; focused lint now passes.
+The continued preflight has now prepared D-owned dependencies, migrated Postgres/Redis, local QStash and S3, and a seeded CLI login. See `environment-ready.md` for current state and restart commands. This does not enable final Hook execution before the coordinator supplies the integrated base. The initial missing-eslint checkpoint remains historical; focused lint now passes.
 
 ## Execution order and publication gate
 

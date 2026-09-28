@@ -2,6 +2,8 @@
 
 本稿描述已约定的集成协议，不是发布文档。D 当前起点是 F `66af6210`，其中控制模式在注册和恢复时仍会明确拒绝。C1/C2 及通知生产者改动集成并验证后，才可发布到 `docs/development/basic/agent-runtime-hooks.zh-CN.mdx`。
 
+C1 接口检查点：协调提供的 `f055aa20931d864d500779ea77e6b14800055f29` 实现 allow/deny，但包含 `updatedInput` 或 `additionalContext` 的响应整体视为 unsupported，按 `onError` 处理，不部分应用决定。D 仅检查该接口，未集成。下文 rewrite/context 及完整审批行为仍等待 C2 和最终集成基线；参见 `c1-interface.md`。
+
 ## 从服务端代码注册
 
 Hook 属于一次服务端 Agent operation。可信业务代码通过已有数据库、用户和 Agent 调用 `AiAgentService.execAgent({ hooks })`。`hooks` 是服务端编程选项，不是浏览器请求字段、全局策略、配置文件、环境变量部署开关或管理页面。
@@ -40,11 +42,11 @@ await aiAgentService.execAgent({ agentId, prompt, hooks });
 
 ## 投递方式
 
-| 注册方式 | local 服务端 Runtime | queue 服务端 Runtime |
-| --- | --- | --- |
-| 仅 webhook | 发送 HTTP | 从持久配置发送 HTTP |
-| handler 和通知 webhook | 调用内存 handler | 发送 webhook |
-| 仅 handler | 调用内存 handler | 不持久化 handler，不能恢复投递 |
+| 注册方式               | local 服务端 Runtime | queue 服务端 Runtime           |
+| ---------------------- | -------------------- | ------------------------------ |
+| 仅 webhook             | 发送 HTTP            | 从持久配置发送 HTTP            |
+| handler 和通知 webhook | 调用内存 handler     | 发送 webhook                   |
+| 仅 handler             | 调用内存 handler     | 不持久化 handler，不能恢复投递 |
 
 Runtime 模式与 webhook 传输方式是两个选择。`delivery:'fetch'` 为默认值，在 queue Runtime 中也等待 HTTP 响应。`delivery:'qstash'` 向 QStash 发布通知；收到发布确认不代表目标端已收件。QStash 发布失败沿用 fetch fallback，`fallback:'none'` 可禁用此回退。QStash 不用于控制响应。
 
@@ -52,7 +54,7 @@ Runtime 模式与 webhook 传输方式是两个选择。`delivery:'fetch'` 为�
 
 ## 请求与响应
 
-请求为 JSON POST，携带事件及 `hookId`、`hookType`。工具事件保留 `identifier`、`apiName`、`args`，集成后的生产者还提供原生 `toolCallId`、`originalArgs`、执行来源/目标及可用运行关联。可选关联取决于真实 origin，不猜测父 ID。通知兼容已有 `eventFields`/`body`，控制请求禁止裁剪和覆盖载荷。远端不发送 `finalState`。
+请求为 JSON POST，携带事件及 `hookId`、`hookType`。工具事件保留 `identifier`、`apiName`、`args`，集成后的生产者还提供原生 `toolCallId`、`originalArgs`、执行来源 / 目标及可用运行关联。可选关联取决于真实 origin，不猜测父 ID。通知兼容已有 `eventFields`/`body`，控制请求禁止裁剪和覆盖载荷。远端不发送 `finalState`。
 
 只有设置 `responseHandling:'toolCall'` 的 `beforeToolCall` webhook 解释下列响应：
 
@@ -82,24 +84,24 @@ additionalContext 随工具记录保存，进入后续模型上下文，按 tool
 
 ## 事件
 
-| 事件 | 含义 |
-| --- | --- |
-| beforeToolCall | 工具准备，唯一 HTTP 控制点 |
-| afterToolCall | 最终参数及结构化结果，包括 blocked |
-| onToolCallError | 真实工具异常，不包括 Hook deny |
-| beforeHumanIntervention | 审批前的原生工具 ID 与有效参数 |
-| afterHumanIntervention | 批准/拒绝动作、原因及受影响工具 ID |
-| onStopByHumanIntervention | 人工停止运行的原因及工具关联 |
-| beforeStep | 步骤开始前 |
-| afterStep | 步骤内容、结果及使用统计 |
-| onComplete | 终止原因、最终回复、附件和统计，不包括异步停驻 |
-| onError | 原业务异常及运行关联 |
-| beforeCompact | 压缩前消息/token 数 |
-| afterCompact | 压缩消息组 ID、前后数量、摘要 |
-| onCompactError | 压缩真实错误及 token 信息 |
-| beforeCallAgent | 父运行准备创建/启动子 Agent |
-| afterCallAgent | 子运行创建/启动返回，**不是子运行完成** |
-| onCallAgentError | 子运行创建/启动失败或抛异常 |
+| 事件                      | 含义                                           |
+| ------------------------- | ---------------------------------------------- |
+| beforeToolCall            | 工具准备，唯一 HTTP 控制点                     |
+| afterToolCall             | 最终参数及结构化结果，包括 blocked             |
+| onToolCallError           | 真实工具异常，不包括 Hook deny                 |
+| beforeHumanIntervention   | 审批前的原生工具 ID 与有效参数                 |
+| afterHumanIntervention    | 批准 / 拒绝动作、原因及受影响工具 ID           |
+| onStopByHumanIntervention | 人工停止运行的原因及工具关联                   |
+| beforeStep                | 步骤开始前                                     |
+| afterStep                 | 步骤内容、结果及使用统计                       |
+| onComplete                | 终止原因、最终回复、附件和统计，不包括异步停驻 |
+| onError                   | 原业务异常及运行关联                           |
+| beforeCompact             | 压缩前消息 /token 数                           |
+| afterCompact              | 压缩消息组 ID、前后数量、摘要                  |
+| onCompactError            | 压缩真实错误及 token 信息                      |
+| beforeCallAgent           | 父运行准备创建 / 启动子 Agent                  |
+| afterCallAgent            | 子运行创建 / 启动返回，**不是子运行完成**      |
+| onCallAgentError          | 子运行创建 / 启动失败或抛异常                  |
 
 除配置了控制模式的 `beforeToolCall` 外，其余均仅通知。共享群的子运行可没有独立 `threadId`。子完成由其自身 `onComplete` 表达，父 hooks 不自动继承给子 operation。
 
@@ -107,4 +109,4 @@ additionalContext 随工具记录保存，进入后续模型上下文，按 tool
 
 ## 覆盖限制
 
-覆盖服务端 Runtime 管理的工具，包括其客户端/设备转发路径；不覆盖独立客户端 Runtime 或异构 Agent 内部工具。不提供全局强制治理、自动子继承、输出改写、outbox 或 exactly-once。发布前须对协调给出的最终集成版本及真实 local/queue/device/Web 结果逐项核实。
+覆盖服务端 Runtime 管理的工具，包括其客户端 / 设备转发路径；不覆盖独立客户端 Runtime 或异构 Agent 内部工具。不提供全局强制治理、自动子继承、输出改写、outbox 或 exactly-once。发布前须对协调给出的最终集成版本及真实 local/queue/device/Web 结果逐项核实。

@@ -2,6 +2,8 @@
 
 This draft describes the agreed integrated contract. It is not release documentation. D currently starts at F `66af6210`, where registration/restoration deliberately rejects control mode. C1/C2 and notification producer changes must be integrated and verified before publishing this page at `docs/development/basic/agent-runtime-hooks.mdx`.
 
+C1 interface checkpoint: coordinator-supplied `f055aa20931d864d500779ea77e6b14800055f29` implements allow/deny, but treats any response containing `updatedInput` or `additionalContext` as wholly unsupported (`onError` applies, with no partial decision). D has inspected this contract without integrating it. The rewrite/context and complete approval behavior below still requires C2 and the final integrated base. See `c1-interface.md`.
+
 ## Register hooks in server code
 
 Hooks belong to one server Agent operation. Pass them to `AiAgentService.execAgent({ hooks })` from trusted application code with an existing database, user, and Agent. `hooks` is a server programming option, not a browser request field, global policy, configuration file, environment-based deployment switch, or management UI.
@@ -40,11 +42,11 @@ The variables `aiAgentService`, `agentId`, and `prompt` come from your server in
 
 ## Delivery modes
 
-| Registration | Local server runtime | Queue server runtime |
-| --- | --- | --- |
-| webhook only | HTTP delivery | HTTP delivery from persisted configuration |
-| handler and notification webhook | in-memory handler | webhook |
-| handler only | in-memory handler | no persisted handler delivery |
+| Registration                     | Local server runtime | Queue server runtime                       |
+| -------------------------------- | -------------------- | ------------------------------------------ |
+| webhook only                     | HTTP delivery        | HTTP delivery from persisted configuration |
+| handler and notification webhook | in-memory handler    | webhook                                    |
+| handler only                     | in-memory handler    | no persisted handler delivery              |
 
 Runtime mode and webhook transport are different choices. `delivery:'fetch'` (default) awaits the HTTP request even in queue runtime. `delivery:'qstash'` publishes a notification to QStash; acknowledgement means the queue accepted it, not that the target received it. A QStash publish failure uses the existing fetch fallback unless `fallback:'none'` disables it. QStash cannot carry control responses.
 
@@ -82,24 +84,24 @@ Additional context is saved with the tool record, made available to subsequent m
 
 ## Events
 
-| Event | Meaning |
-| --- | --- |
-| beforeToolCall | Tool preparation; the only HTTP control point |
-| afterToolCall | Final parameters and structured result, including blocked results |
-| onToolCallError | An actual tool exception, not a hook denial |
-| beforeHumanIntervention | Pending native tool IDs and effective input before approval |
-| afterHumanIntervention | Approval/rejection action, reason and affected tool IDs |
-| onStopByHumanIntervention | Human stop/rejection that halts the run, with affected IDs |
-| beforeStep | Step about to execute |
-| afterStep | Step content/results and usage statistics |
-| onComplete | Terminal reason, final response, attachments and statistics; not async parking |
-| onError | Original business error and run association |
-| beforeCompact | Message/token counts before context compression |
-| afterCompact | Compression message-group ID, counts and summary |
-| onCompactError | Compression's actual error and token context |
-| beforeCallAgent | Parent operation is about to create/start a child |
-| afterCallAgent | Child creation/start returned; **not child completion** |
-| onCallAgentError | Child creation/start failed or threw |
+| Event                     | Meaning                                                                        |
+| ------------------------- | ------------------------------------------------------------------------------ |
+| beforeToolCall            | Tool preparation; the only HTTP control point                                  |
+| afterToolCall             | Final parameters and structured result, including blocked results              |
+| onToolCallError           | An actual tool exception, not a hook denial                                    |
+| beforeHumanIntervention   | Pending native tool IDs and effective input before approval                    |
+| afterHumanIntervention    | Approval/rejection action, reason and affected tool IDs                        |
+| onStopByHumanIntervention | Human stop/rejection that halts the run, with affected IDs                     |
+| beforeStep                | Step about to execute                                                          |
+| afterStep                 | Step content/results and usage statistics                                      |
+| onComplete                | Terminal reason, final response, attachments and statistics; not async parking |
+| onError                   | Original business error and run association                                    |
+| beforeCompact             | Message/token counts before context compression                                |
+| afterCompact              | Compression message-group ID, counts and summary                               |
+| onCompactError            | Compression's actual error and token context                                   |
+| beforeCallAgent           | Parent operation is about to create/start a child                              |
+| afterCallAgent            | Child creation/start returned; **not child completion**                        |
+| onCallAgentError          | Child creation/start failed or threw                                           |
 
 Every event except configured `beforeToolCall` control is notification-only. A shared-group child may have no isolated `threadId`. Child completion is its own `onComplete`; parent hooks are not automatically inherited by child operations.
 
