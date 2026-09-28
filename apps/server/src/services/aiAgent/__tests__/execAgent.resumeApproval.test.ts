@@ -388,110 +388,225 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
     ]);
   });
 
-  describe('missing approval source runtime state', () => {
-    it.each([
-      { durable: false, form: 'single' },
-      { durable: false, form: 'batch' },
-      { durable: false, form: 'mixed' },
-      { durable: true, form: 'single' },
-      { durable: true, form: 'batch' },
-      { durable: true, form: 'mixed' },
-      { durable: true, form: 'incomplete' },
-    ] as const)('fails closed for $form with durable claim=$durable', async ({ durable, form }) => {
-      const originalArgs = { path: 'A.txt', content: 'original A' };
-      const effectiveArgs = { path: 'B.txt', content: 'reviewed B' };
-      const preparation = {
-        originalArgs,
-        effectiveArgs,
-        additionalContexts: [{ hookId: 'control', text: 'context B' }],
-        status: 'ready',
-      };
-      const intervention = { batchId: 'batch-parked', operationId: 'op-parked', status: 'pending' };
-      mockFindById.mockImplementation(async (id: string) =>
-        id.startsWith('tool-msg-')
-          ? { ...pendingToolMessage, id, parentId: 'assistant-source', content: '' }
-          : undefined,
+  describe.each(['missing', 'load_error'] as const)(
+    'unavailable approval source: %s',
+    (sourceFailure) => {
+      it.each([
+        { durable: false, form: 'single' },
+        { durable: false, form: 'batch' },
+        { durable: false, form: 'mixed' },
+        { durable: false, form: 'partial' },
+        { durable: true, form: 'single' },
+        { durable: true, form: 'batch' },
+        { durable: true, form: 'mixed' },
+        { durable: true, form: 'partial' },
+        { durable: true, form: 'incomplete' },
+      ] as const)(
+        'fails closed for $form with durable claim=$durable',
+        async ({ durable, form }) => {
+          const originalArgs = { path: 'A.txt', content: 'original A' };
+          const effectiveArgs = { path: 'B.txt', content: 'reviewed B' };
+          const preparation = {
+            originalArgs,
+            effectiveArgs,
+            additionalContexts: [{ hookId: 'control', text: 'context B' }],
+            status: 'ready',
+          };
+          const intervention = {
+            batchId: 'batch-parked',
+            operationId: 'op-parked',
+            status: 'pending',
+          };
+          mockFindById.mockImplementation(async (id: string) =>
+            id.startsWith('tool-msg-')
+              ? { ...pendingToolMessage, id, parentId: 'assistant-source', content: '' }
+              : undefined,
+          );
+          mockFindOperationById.mockResolvedValue({ id: 'op-parked', status: 'waiting_for_human' });
+          mockInterruptOperation.mockResolvedValue(true);
+          mockRecordCompletion.mockResolvedValue(true);
+          mockFindMessagePlugin.mockImplementation(async (id: string) => ({
+            ...pendingToolPlugin,
+            arguments: JSON.stringify(effectiveArgs),
+            toolCallId: `call-${id}`,
+            intervention,
+            state: { hookPreparation: preparation },
+          }));
+          // Missing/expired source, including an incomplete deterministic state
+          // that cannot be scheduled and must not be rebuilt without its hooks.
+          mockLoadInterventionContinuationState.mockImplementation(async (id: string) => {
+            if (id === 'op-parked' && sourceFailure === 'load_error') {
+              throw new Error('source store unavailable');
+            }
+            return form === 'incomplete' && id !== 'op-parked'
+              ? { operationId: id, status: 'idle' }
+              : null;
+          });
+          // A partial decision must not touch another still-pending sibling or
+          // start reading/rebuilding the continuation history before source validation.
+          const pendingSibling = {
+            ...pendingToolMessage,
+            id: 'tool-msg-2',
+            parentId: 'assistant-source',
+            pluginIntervention: intervention,
+            tool_call_id: 'call-tool-msg-2',
+          };
+          if (form === 'partial') mockMessageQuery.mockResolvedValue([pendingSibling]);
+          const entries = [
+            {
+              decision: 'approved' as const,
+              parentMessageId: 'tool-msg-1',
+              toolCallId: 'call-tool-msg-1',
+            },
+            ...(form === 'batch' || form === 'mixed'
+              ? [
+                  {
+                    decision:
+                      form === 'mixed' ? ('rejected_continue' as const) : ('approved' as const),
+                    parentMessageId: 'tool-msg-2',
+                    toolCallId: 'call-tool-msg-2',
+                  },
+                ]
+              : []),
+          ];
+          const dispatch = vi.spyOn(hookDispatcher, 'dispatch');
+          try {
+            const result = service.execAgent({
+              ...baseParams,
+              ...(durable
+                ? {
+                    approvalSourceOperationId: 'op-parked',
+                    approvalResolutionRequestId: '018fbd8e-7baf-7c6d-8000-000000000092',
+                  }
+                : {}),
+              ...(entries.length === 1
+                ? { resumeApproval: entries[0] }
+                : { resumeApprovals: entries }),
+            });
+            await expect(result).rejects.toThrow(
+              sourceFailure === 'missing'
+                ? 'Approval source runtime state is missing or expired: op-parked'
+                : 'source store unavailable',
+            );
+            if (durable) {
+              // The generic claim is its own retry record; do not reopen it under
+              // a concurrent same-request caller that may already own a continuation.
+              expect(mockRestoreHumanApproval).not.toHaveBeenCalled();
+            } else {
+              expect(mockRestoreHumanApproval).toHaveBeenCalledExactlyOnceWith(
+                entries.map((entry) => ({
+                  claimedResolutionRequestId: expect.stringMatching(/^legacy_/),
+                  id: entry.parentMessageId,
+                  content: '',
+                  intervention,
+                  pluginState: { hookPreparation: preparation },
+                  replacePluginState: true,
+                })),
+              );
+            }
+            expect(mockMessageCreate).not.toHaveBeenCalled();
+            expect(mockMessageQuery).not.toHaveBeenCalled();
+            expect(
+              mockResolveHumanApproval.mock.calls[0][0].map(({ id }: { id: string }) => id),
+            ).toEqual(entries.map(({ parentMessageId }) => parentMessageId));
+            expect(mockLoadInterventionContinuationState).toHaveBeenCalledWith('op-parked');
+            expect(mockCreateOperation).not.toHaveBeenCalled();
+            expect(mockEnsureInterventionContinuationStarted).not.toHaveBeenCalled();
+            expect(mockInterruptOperation).not.toHaveBeenCalled();
+            expect(mockRecordCompletion).not.toHaveBeenCalled();
+            expect(mockUpdateToolMessage).not.toHaveBeenCalled();
+            expect(mockUpdateMessagePlugin).not.toHaveBeenCalled();
+            expect(dispatch).not.toHaveBeenCalled();
+            expect(hookFetch).not.toHaveBeenCalled();
+          } finally {
+            dispatch.mockRestore();
+          }
+        },
       );
+    },
+  );
+
+  it.each([false, true])(
+    'retries a transient source read failure with durable claim=%s',
+    async (durable) => {
+      const requestId = '018fbd8e-7baf-7c6d-8000-000000000091';
+      const reviewedArguments = '{"path":"B.txt"}';
+      let claimedBy: string | undefined;
+      let sourceAvailable = false;
+      const hooks = [
+        {
+          id: 'control',
+          type: 'beforeToolCall',
+          webhook: { url: 'https://hooks.example/control', responseHandling: 'toolCall' },
+        },
+      ];
+      mockFindMessagePlugin.mockImplementation(async () => ({
+        ...pendingToolPlugin,
+        arguments: reviewedArguments,
+        intervention: {
+          operationId: 'op-parked',
+          status: claimedBy ? 'approved' : 'pending',
+          ...(claimedBy
+            ? { resolutionRequestId: claimedBy, approvedArguments: reviewedArguments }
+            : {}),
+        },
+      }));
+      mockResolveHumanApproval.mockImplementation(
+        async (rows: { intervention: { resolutionRequestId: string } }[]) => {
+          claimedBy = rows[0].intervention.resolutionRequestId;
+          return 'applied';
+        },
+      );
+      mockRestoreHumanApproval.mockImplementation(async () => {
+        claimedBy = undefined;
+      });
+      mockLoadInterventionContinuationState.mockImplementation(async (id: string) => {
+        if (id !== 'op-parked') return null;
+        if (!sourceAvailable) throw new Error('source store unavailable');
+        return {
+          operationId: id,
+          origin: { agentId: 'agent-1', topicId: 'topic-1' },
+          host: { hooks },
+        };
+      });
       mockFindOperationById.mockResolvedValue({ id: 'op-parked', status: 'waiting_for_human' });
       mockInterruptOperation.mockResolvedValue(true);
       mockRecordCompletion.mockResolvedValue(true);
-      mockFindMessagePlugin.mockImplementation(async (id: string) => ({
-        ...pendingToolPlugin,
-        arguments: JSON.stringify(effectiveArgs),
-        toolCallId: `call-${id}`,
-        intervention,
-        state: { hookPreparation: preparation },
-      }));
-      // Missing/expired source, including an incomplete deterministic state
-      // that cannot be scheduled and must not be rebuilt without its hooks.
-      mockLoadInterventionContinuationState.mockImplementation(async (id: string) =>
-        form === 'incomplete' && id !== 'op-parked' ? { operationId: id, status: 'idle' } : null,
-      );
-      const entries = [
-        {
+      const input = {
+        ...baseParams,
+        ...(durable
+          ? { approvalSourceOperationId: 'op-parked', approvalResolutionRequestId: requestId }
+          : {}),
+        resumeApproval: {
           decision: 'approved' as const,
           parentMessageId: 'tool-msg-1',
-          toolCallId: 'call-tool-msg-1',
+          toolCallId: 'call_xyz',
         },
-        ...(form === 'batch' || form === 'mixed'
-          ? [
-              {
-                decision: form === 'mixed' ? ('rejected_continue' as const) : ('approved' as const),
-                parentMessageId: 'tool-msg-2',
-                toolCallId: 'call-tool-msg-2',
-              },
-            ]
-          : []),
-      ];
-      const dispatch = vi.spyOn(hookDispatcher, 'dispatch');
-      try {
-        const result = service.execAgent({
-          ...baseParams,
-          ...(durable
-            ? {
-                approvalSourceOperationId: 'op-parked',
-                approvalResolutionRequestId: '018fbd8e-7baf-7c6d-8000-000000000092',
-              }
-            : {}),
-          ...(entries.length === 1 ? { resumeApproval: entries[0] } : { resumeApprovals: entries }),
-        });
-        if (durable) {
-          await expect(result).rejects.toThrow(
-            'Approval source runtime state is missing or expired: op-parked',
-          );
-          // The generic claim is its own retry record; do not reopen it under
-          // a concurrent same-request caller that may already own a continuation.
-          expect(mockRestoreHumanApproval).not.toHaveBeenCalled();
-        } else {
-          await expect(result).resolves.toMatchObject({
-            success: false,
-            error: 'Approval source runtime state is missing or expired: op-parked',
-          });
-          expect(mockRestoreHumanApproval).toHaveBeenCalledExactlyOnceWith(
-            entries.map((entry) => ({
-              claimedResolutionRequestId: expect.stringMatching(/^legacy_/),
-              id: entry.parentMessageId,
-              content: '',
-              intervention,
-              pluginState: { hookPreparation: preparation },
-              replacePluginState: true,
-            })),
-          );
-        }
-        expect(mockLoadInterventionContinuationState).toHaveBeenCalledWith('op-parked');
-        expect(mockCreateOperation).not.toHaveBeenCalled();
-        expect(mockEnsureInterventionContinuationStarted).not.toHaveBeenCalled();
-        expect(mockInterruptOperation).not.toHaveBeenCalled();
-        expect(mockRecordCompletion).not.toHaveBeenCalled();
-        expect(mockUpdateToolMessage).not.toHaveBeenCalled();
-        expect(mockUpdateMessagePlugin).not.toHaveBeenCalled();
-        expect(dispatch).not.toHaveBeenCalled();
-        expect(hookFetch).not.toHaveBeenCalled();
-      } finally {
-        dispatch.mockRestore();
+      };
+      await expect(service.execAgent(input)).rejects.toThrow('source store unavailable');
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+      expect(mockMessageCreate).not.toHaveBeenCalled();
+      expect(claimedBy).toBe(durable ? requestId : undefined);
+
+      sourceAvailable = true;
+      await expect(service.execAgent(input)).resolves.toMatchObject({ success: true });
+      expect(mockCreateOperation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ hooks }),
+      );
+      expect(mockResolveHumanApproval).toHaveBeenCalledTimes(durable ? 1 : 2);
+      expect(mockRestoreHumanApproval).toHaveBeenCalledTimes(durable ? 0 : 1);
+      expect(
+        mockLoadInterventionContinuationState.mock.calls.filter(([id]) => id === 'op-parked'),
+      ).toHaveLength(2);
+      if (durable) {
+        expect(mockCreateOperation).toHaveBeenCalledWith(
+          expect.objectContaining({
+            interventionResolution: expect.objectContaining({ resolutionRequestId: requestId }),
+          }),
+        );
       }
-    });
-  });
+    },
+  );
 
   describe('decision=approved', () => {
     it('persists intervention=approved and seeds initialContext for human_approved_tool', async () => {
@@ -588,6 +703,8 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
       expect(mockCreateOperation.mock.invocationCallOrder[0]).toBeLessThan(
         mockInterruptOperation.mock.invocationCallOrder[0],
       );
+      expect(mockCreateOperation).toHaveBeenCalledWith(expect.objectContaining({ hooks: [] }));
+      expect(mockLoadInterventionContinuationState).toHaveBeenCalledExactlyOnceWith('op-parked');
       expect(mockInterruptOperation).toHaveBeenCalledWith('op-parked');
       expect(mockRecordCompletion).toHaveBeenCalledWith('op-parked', {
         completedAt: expect.any(Date),
@@ -811,8 +928,9 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
       ...pendingToolPlugin,
       intervention: { operationId: 'op-parked', status: 'pending' },
     });
-    mockLoadInterventionContinuationState.mockImplementation(async (id: string) =>
-      id === continuationOperationId
+    mockLoadInterventionContinuationState.mockImplementation(async (id: string) => {
+      if (id === 'op-parked') throw new Error('expired source must not be loaded for ready reuse');
+      return id === continuationOperationId
         ? {
             metadata: {
               agentInterventionPreparation: {
@@ -839,8 +957,8 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
               ],
             },
           }
-        : null,
-    );
+        : null;
+    });
     mockFindOperationById.mockResolvedValue({
       agentId: 'agent-1',
       appContext: { sourceMessageId: 'tool-msg-1' },
