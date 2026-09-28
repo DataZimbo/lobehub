@@ -160,8 +160,7 @@ export interface AgentHookEvent {
 
 /**
  * Correlation and routing facts shared by tool lifecycle notifications.
- * Additive fields stay optional for existing hook producers; the server transport
- * supplies native toolCallId and originalArgs on every invocation.
+ * The server transport supplies the native toolCallId on every invocation.
  */
 export interface ToolCallHookContext {
   /** Device selected by the run's execution plan and access policy, if any. */
@@ -171,18 +170,16 @@ export interface ToolCallHookContext {
   /** Effective arguments used for this invocation. */
   args: Record<string, any>;
   /** Assistant message owning the call, distinct from the source user message. */
-  assistantMessageId?: string;
+  assistantMessageId: string;
   callIndex: number;
   documentId?: string;
   /** Effective run execution target, when the run has an execution plan. */
   executionTarget?: ExecutionPlan['target'];
   /** Transport dispatch destination; independent of the tool's origin. */
-  executor?: ToolExecutor;
+  executor: ToolExecutor;
   groupId?: string;
   identifier: string;
   operationId: string;
-  /** Arguments before hook input replacement. */
-  originalArgs?: Record<string, unknown>;
   /** Only present when the run has an actual parent operation in its lineage. */
   parentOperationId?: string;
   sessionId?: string;
@@ -191,7 +188,7 @@ export interface ToolCallHookContext {
   taskId?: string;
   threadId?: string;
   /** Native model/runtime call id, never synthesized from callIndex. */
-  toolCallId?: string;
+  toolCallId: string;
   /** Existing tool message on resume; absent before a new message is created. */
   toolMessageId?: string;
   toolSource?: string;
@@ -218,7 +215,7 @@ export interface AfterToolCallHookEvent extends ToolCallHookContext {
   executionTimeMs: number;
   mocked: boolean;
   /** Structured result after archival, including errors and state (e.g. blocked). */
-  result?: ToolRunResult;
+  result: ToolRunResult;
   success: boolean;
 }
 

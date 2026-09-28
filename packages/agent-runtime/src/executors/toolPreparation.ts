@@ -83,7 +83,6 @@ export const createRunContext = ({
     mode,
     operationId: host.operation.operationId,
     parentMessageId,
-    originalArgs: state.toolPreparations?.[tool.id]?.originalArgs,
     parsedArgs: parseToolArgs(tool),
     reuseExistingMessage,
     state,
@@ -126,7 +125,7 @@ export async function prepareToolCalls(
     });
     const signal = context.abortSignal;
     const cancelled: ToolCallPreparation = {
-      originalArgs: context.originalArgs ?? context.parsedArgs,
+      originalArgs: state.toolPreparations?.[tool.id]?.originalArgs ?? context.parsedArgs,
       status: 'cancelled',
     };
     const preparation = signal?.aborted
