@@ -1,5 +1,11 @@
 # Cloud-dependent blocked subcases
 
+Latest isolated Cloud follow-up (r10): the coordinator-authorized const-only six-line patch from official `2c604fc1` is now applied after ASR `49164e45`, producing private Cloud `4fe5a9fc995c58c812577ea4fcf3ea24eedd3ed6`. Its upstream OSS gitlink was excluded; D separately selected its controlled integration `1b9106f1982937214da7d7dda9ce6e81e443e716` in the nested checkout. No Hook PR product change or install occurred. The private compatibility commit skipped hooks; the changed constant file is byte-identical to upstream, not a claimed Cloud lint/test pass.
+
+Actual startup on Next 39927/Vite 21458 reached local signin HTTP 200 and authenticated D user `user_agent_testing_001`. The missing `ENABLE_TOOL_CHANNEL_SETTINGS` export is resolved. SPA then reaches an error boundary: Cloud `src/features/User/WorkspaceUsageStats.tsx` and `src/business/client/features/ArtifactDeploymentsSidebar/index.tsx` import unavailable `@/components/NeuralNetworkLoading`. The current OSS tree has `src/components/Loading/CircleLoading`; no substitute or overlay repair was applied. Generic Review actions remain blocked by this source compatibility failure. Separate online model-config 500 errors were also observed; no successful inference is claimed.
+
+Evidence: `.acceptances/hooks-d-cloud-const-r10/assets/{provenance,result,teardown}.json`, `official-const.patch`, and visually inspected `cloud-home.png` / `cloud-error.png`. Raw private logs remain local. Only the D browser and verified D app PID tree were stopped afterward; database/Redis were retained. Earlier paragraphs below describe historical checkpoints and do not supersede r10.
+
 Latest ancestry update: C1 7a6dd20f is now present through C2 608593a3 in D base 7b231bb3e9b8. Earlier C1-pending statements below describe the recorded execution time; remaining C2/S fixture repairs and final review are still pending. No evidence SHA is changed.
 
 Latest Stop repair is submitted and temporarily integrated; see [stop-retry-checkpoint.md](stop-retry-checkpoint.md). Earlier candidate/uncommitted status below is historical. Cloud product evidence and final independent repair review remain open.
