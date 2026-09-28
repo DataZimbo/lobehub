@@ -4,7 +4,7 @@ This supersedes historical status/gap summaries, without rewriting any round or 
 
 All 31 stable plan IDs are accounted for: 6 observed, 21 partial, 2 failed, 2 blocked. No aggregate pass is claimed.
 
-Current local integration: `e1f284d2593a05103665c419fd80bb3c659b4cba` ([r28 contract and separate identity/email checkpoint](owner-email-checkpoint.md)) ([r26 three-tool identity/checks](tool-identity-checkpoint.md), includes [r25 diagnostics](qstash-diagnostics-checkpoint.md)). The ledger below does not prove the newly changed visitor-versus-owner payload identity; its separate r27/r28 observations do not change this original31 ledger. Last served r23 integration: `ab5d35a6d7b4f009866677f4304b29dea9ac0da1`; private Cloud `69c38102cf1af86917737a96aa02829c1e2eadb4`. r23 served this combination; its docs execution head was `2c414d4f`. Earlier evidence retains its own SHA (r7 served `95d4056`, r12 `5b762f88`, r17 `196787ee`, and each linked checkpoint records the rest). Test-only successors do not relabel earlier execution.
+Current published integration: `e1f284d2593a05103665c419fd80bb3c659b4cba` ([r28 contract and separate identity/email checkpoint](owner-email-checkpoint.md)) ([r26 three-tool identity/checks](tool-identity-checkpoint.md), includes [r25 diagnostics](qstash-diagnostics-checkpoint.md)). The ledger below does not prove the newly changed visitor-versus-owner payload identity; its separate r27/r28 observations do not change this original31 ledger. Last served r23 integration: `ab5d35a6d7b4f009866677f4304b29dea9ac0da1`; private Cloud `69c38102cf1af86917737a96aa02829c1e2eadb4`. r23 served this combination; its docs execution head was `2c414d4f`. Earlier evidence retains its own SHA (r7 served `95d4056`, r12 `5b762f88`, r17 `196787ee`, and each linked checkpoint records the rest). Test-only successors do not relabel earlier execution.
 
 Required media are unchanged from [plan.json](plan.json). The table lists those requirements, not a claim of complete media coverage. r23 supplies inspected 24-second single/partial B→C Web recordings; later reject/Stop steps have screenshots and HTTP/DB evidence. Missing subcase media remain incomplete. The same acceptance-checker final assessment is still unused and must wait for the agreed checkpoint; independent code review allocation is exhausted.
 
@@ -63,7 +63,13 @@ Required media are unchanged from [plan.json](plan.json). The table lists those 
 ## Evidence index
 
 - [r23 real conversation Web single/partial approval](cloud-web-checkpoint.md)
+
 - [r20 token critical Stop](cloud-token-checkpoint.md), [r21 token partial decisions](cloud-partial-checkpoint.md), [r22 actual custom contract/mixed Stop](cloud-custom-checkpoint.md)
+
 - [r7 cold card and device](cold-card-checkpoint.md), [r12 missing source](missing-source-checkpoint.md), [r15 ready reuse](ready-reuse-checkpoint.md), [r16 transient source read](source-read-failure-checkpoint.md)
+
 - [r17 route repair and r19 type comparison](cloud-stop-route-checkpoint.md), [r2 notification recovery](notification-checkpoint.md), [historical r1 matrix](execution-checkpoint.md)
+
 - [Independent review and exact L CI correction](review-scope-checkpoint.md). No new reviewer conclusion applies to later Cloud-router repairs.
+
+- r31 quality-only follow-up: L fcedee on independent acceptance415a9814 resolves the historical17 fixture failures (263 tests/lint passed). Full type remains1444, complete diagnostic blocks equal specifically to r28 identity run. No product rerun or ledger status promotion; C07 remains failed. See [r28/r31 checkpoint](owner-email-checkpoint.md).
