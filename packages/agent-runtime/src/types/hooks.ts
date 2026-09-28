@@ -160,8 +160,7 @@ export interface AgentHookEvent {
 
 /**
  * Correlation and routing facts shared by tool lifecycle notifications.
- * Additive fields stay optional for existing hook producers; the server transport
- * supplies native toolCallId and originalArgs on every invocation.
+ * The server transport supplies the native toolCallId on every invocation.
  */
 export interface ToolCallHookContext {
   /** Device selected by the run's execution plan and access policy, if any. */
@@ -181,8 +180,6 @@ export interface ToolCallHookContext {
   groupId?: string;
   identifier: string;
   operationId: string;
-  /** Arguments before hook input replacement. */
-  originalArgs?: Record<string, unknown>;
   /** Only present when the run has an actual parent operation in its lineage. */
   parentOperationId?: string;
   sessionId?: string;

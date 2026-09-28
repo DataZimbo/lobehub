@@ -111,8 +111,6 @@ export interface ToolRunContext {
   messageId?: string;
   mode: 'batch' | 'single';
   operationId: string;
-  /** Original arguments retained by tool preparation before input replacement. */
-  originalArgs?: Record<string, unknown>;
   parentMessageId: string;
   parsedArgs: Record<string, unknown>;
   /** Reuse the parent tool message when resuming after intervention. */

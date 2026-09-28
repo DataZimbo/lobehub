@@ -26,7 +26,6 @@ const createContext = (): ToolRunContext => ({
   effectiveManifestMap: {},
   mode: 'single',
   operationId: 'op-1',
-  originalArgs: { query: 'original' },
   parentMessageId: 'assistant-1',
   parsedArgs: { query: 'effective' },
   state: AgentRuntime.createInitialState({ operationId: 'op-1', status: 'running', stepCount: 1 }),
@@ -96,28 +95,15 @@ describe('buildToolCallHookContext', () => {
     },
   );
 
-  it('keeps original and effective args distinct and snapshots original nested values', () => {
+  it('reports invocation args and native call and message identifiers', () => {
     const context = createContext();
-    context.originalArgs = { filter: { query: 'original' } };
     const event = buildToolCallHookContext(call, context, runtime);
 
     expect(event.args).toEqual({ query: 'effective' });
-    expect(event.originalArgs).toEqual({ filter: { query: 'original' } });
-    expect(event.originalArgs).not.toBe(context.originalArgs);
-    expect(event.originalArgs?.filter).not.toBe(context.originalArgs.filter);
     expect(event.toolCallId).toBe('native-call-id');
     expect(event.callIndex).toBe(7);
     expect(event.assistantMessageId).toBe('assistant-1');
     expect(event.toolMessageId).toBe('resumed-tool-message');
-  });
-
-  it('uses effective args as the original snapshot when no rewrite was prepared', () => {
-    const context = createContext();
-    delete context.originalArgs;
-    const event = buildToolCallHookContext(call, context, runtime);
-
-    expect(event.originalArgs).toEqual(context.parsedArgs);
-    expect(event.originalArgs).not.toBe(context.parsedArgs);
   });
 
   it('reports the client route only when the server can forward to the client', () => {
