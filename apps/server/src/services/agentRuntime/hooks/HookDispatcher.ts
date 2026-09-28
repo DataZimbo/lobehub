@@ -137,8 +137,18 @@ export class HookDispatcher {
         }
       } catch (error) {
         if (!useHandler && hook.webhook?.fallback === 'none') {
-          console.error('[HookDispatcher] Critical webhook delivery failed');
+          console.error(
+            '[HookDispatcher] Critical webhook delivery failed',
+            { operationId, hookId: hook.id, hookType: type },
+            error,
+          );
           criticalError ??= new CriticalHookDeliveryError(hook.id, error);
+        } else if (!useHandler) {
+          console.error(
+            '[HookDispatcher] Webhook delivery failed (non-fatal)',
+            { operationId, hookId: hook.id, hookType: type },
+            error,
+          );
         } else {
           log('[%s][%s] Hook failed (non-fatal): %s', operationId, type, hook.id);
         }
