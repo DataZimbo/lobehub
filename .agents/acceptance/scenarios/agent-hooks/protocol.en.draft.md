@@ -1,8 +1,8 @@
 # Agent Runtime HTTP hooks — unpublished integration draft
 
-This draft describes the agreed integrated contract. It is not release documentation. D currently starts at F `66af6210`, where registration/restoration deliberately rejects control mode. C1/C2 and notification producer changes must be integrated and verified before publishing this page at `docs/development/basic/agent-runtime-hooks.mdx`.
+This draft describes integration base `858b2d4586fcd2b0cfea8b3f8b8757019e152a29` (C2 + S + K + L). It is not release documentation. The implementation accepts allow/deny, full input replacement and additional context; the temporary control guard has been removed.
 
-C2 submitted checkpoint: `5299fed729ff44202e93eb2f5be20a9f0fafa501` removes C1's temporary unsupported guard and implements the rewrite/context contract below. D has inspected the submitted contract without integrating it. Full approval/Cloud wiring and real-product evidence still require the coordinator's final base. See `c2-interface.md`.
+Actual HTTP/device checks are in progress. D observed a mismatch between rewritten tool arguments and the Web approval card, and the available Cloud checkout currently fails to compile against the integrated OSS tree. Approval/card claims below are intended contract pending correction and verification. Real model inference and managed QStash delivery also lack test credentials. Do not interpret this draft as acceptance or publish it as verified guidance.
 
 ## Register hooks in server code
 
@@ -74,7 +74,7 @@ Only a `beforeToolCall` webhook with `responseHandling:'toolCall'` interprets th
 
 `timeout` is in seconds, default 30. `onError` defaults to `continue`; `block` is available only in control mode. A control hook cannot also have a handler, use QStash, filter event fields or override the payload. Notifications default to `responseHandling:'ignore'`, and their responses cannot change the run. URLs follow existing SSRF protection and private-network policy. Fetch delivery rejects redirects so destination changes cannot leak credentials.
 
-## Tool control and approvals — requires final C1/C2 verification
+## Tool control and approvals — acceptance pending
 
 Controls run before permission checks, approval and batch lane planning, and before mock or real effects. Registered controls run in order; the next sees the previous effective input. A deny blocks that tool with zero attempts, without invoking mock, execution billing or tool retry. It does not stop the entire Agent. Allow still respects platform permission checks and human approval.
 
@@ -91,7 +91,7 @@ Additional context is persisted with the tool record and projected, escaped, int
 | onToolCallError           | An actual tool exception, not a hook denial                                    |
 | beforeHumanIntervention   | Pending native tool IDs and effective input before approval                    |
 | afterHumanIntervention    | Approval/rejection action, reason and affected tool IDs                        |
-| onStopByHumanIntervention | Human stop/rejection that halts the run, with affected IDs                     |
+| onStopByHumanIntervention | Explicit human stop, with the actually stopped pending IDs                     |
 | beforeStep                | Step about to execute                                                          |
 | afterStep                 | Step content/results and usage statistics                                      |
 | onComplete                | Terminal reason, final response, attachments and statistics; not async parking |

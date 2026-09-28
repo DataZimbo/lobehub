@@ -1,4 +1,4 @@
-interface ResponseFixture {
+export interface ResponseFixture {
   body: string;
   delayMs?: number;
   status?: number;

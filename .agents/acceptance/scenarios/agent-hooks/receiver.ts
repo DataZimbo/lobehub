@@ -3,10 +3,15 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
-import { fixtures } from './responses';
+import { fixtures, type ResponseFixture } from './responses';
 
 /** Disposable test endpoint, never a product route. Use synthetic Agent inputs only. */
-export async function startReceiver(options: { host?: string; log: string; port?: number }) {
+export async function startReceiver(options: {
+  host?: string;
+  log: string;
+  port?: number;
+  responses?: Record<string, ResponseFixture>;
+}) {
   await mkdir(path.dirname(options.log), { recursive: true });
   const log = await open(options.log, 'ax', 0o600);
   let sequence = 0;
@@ -20,7 +25,7 @@ export async function startReceiver(options: { host?: string; log: string; port?
         return;
       }
       const name = route.startsWith('/hooks/') ? route.slice(7) : '';
-      const fixture = fixtures[name];
+      const fixture = (options.responses ?? fixtures)[name];
       if (request.method !== 'POST' || !fixture) {
         response.writeHead(404).end();
         return;

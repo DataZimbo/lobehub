@@ -1,8 +1,8 @@
 # Agent Runtime HTTP Hook — 未发布集成草稿
 
-本稿描述已约定的集成协议，不是发布文档。D 当前起点是 F `66af6210`，其中控制模式在注册和恢复时仍会明确拒绝。C1/C2 及通知生产者改动集成并验证后，才可发布到 `docs/development/basic/agent-runtime-hooks.zh-CN.mdx`。
+本稿对应集成基线 `858b2d4586fcd2b0cfea8b3f8b8757019e152a29`（C2 + S + K + L），不是发布文档。当前实现已接入 allow/deny、完整参数替换与额外上下文，临时控制限制已移除。
 
-C2 已提交检查点：`5299fed729ff44202e93eb2f5be20a9f0fafa501` 已移除 C1 的临时 unsupported 限制并实现下文 rewrite/context 契约。D 已检查提交接口，尚未集成；完整审批、Cloud 转发及真实产品证据仍等待协调的最终基线。参见 `c2-interface.md`。
+实际 HTTP / 设备检查正在进行。D 已观察到改写后的工具参数与 Web 审批卡不一致；现有 Cloud checkout 与集成 OSS 的编译兼容性也阻断了现代审批验证。下文审批 /card 描述是待修复验证的目标契约。真实模型推理和托管 QStash 投递尚缺测试凭据；不得将本稿视为验收通过或已验证的发布指南。
 
 ## 从服务端代码注册
 
@@ -74,7 +74,7 @@ Runtime 模式与 webhook 传输方式是两个选择。`delivery:'fetch'` 为�
 
 `timeout` 单位为秒，默认 30。`onError` 默认 `continue`，仅控制模式允许 `block`。控制 Hook 不能同时使用 handler、QStash、eventFields 或 body。通知默认 `responseHandling:'ignore'`，响应不改变运行。URL 服从已有 SSRF 和私网策略；fetch 拒绝重定向，避免更换目的地址时泄露凭据。
 
-## 工具控制与审批 — 待最终 C1/C2 验证
+## 工具控制与审批 — 待完成验收
 
 控制发生在权限、审批、批量 lane 规划之前，也先于 mock 和真实副作用。按注册顺序执行，后一个控制看到前一个的有效参数；deny 阻止该工具，结果为零 attempts，不 mock、不计工具执行费、不进入工具重试，不停止整个 Agent。allow 仍受平台权限和人工审批约束。
 
