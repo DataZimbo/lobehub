@@ -1,5 +1,7 @@
 import type {
+  AfterToolCallHookEvent,
   AgentState,
+  ToolCallErrorHookEvent,
   ToolRunContext,
   ToolRunExecution,
   ToolTransport,
@@ -99,7 +101,7 @@ export class ServerToolTransport implements ToolTransport {
           {
             ...buildToolCallHookContext(chatToolPayload, context, this.ctx),
             error: error instanceof Error ? error.message : String(error),
-          },
+          } satisfies ToolCallErrorHookEvent,
           context.state.host?.hooks,
         )
         .catch(() => {});
@@ -399,7 +401,7 @@ export class ServerToolTransport implements ToolTransport {
           mocked,
           result,
           success: result.success,
-        },
+        } satisfies AfterToolCallHookEvent,
         context.state.host?.hooks,
       )
       .catch(() => {});

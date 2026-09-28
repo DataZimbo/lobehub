@@ -170,13 +170,13 @@ export interface ToolCallHookContext {
   /** Effective arguments used for this invocation. */
   args: Record<string, any>;
   /** Assistant message owning the call, distinct from the source user message. */
-  assistantMessageId?: string;
+  assistantMessageId: string;
   callIndex: number;
   documentId?: string;
   /** Effective run execution target, when the run has an execution plan. */
   executionTarget?: ExecutionPlan['target'];
   /** Transport dispatch destination; independent of the tool's origin. */
-  executor?: ToolExecutor;
+  executor: ToolExecutor;
   groupId?: string;
   identifier: string;
   operationId: string;
@@ -188,7 +188,7 @@ export interface ToolCallHookContext {
   taskId?: string;
   threadId?: string;
   /** Native model/runtime call id, never synthesized from callIndex. */
-  toolCallId?: string;
+  toolCallId: string;
   /** Existing tool message on resume; absent before a new message is created. */
   toolMessageId?: string;
   toolSource?: string;
@@ -215,7 +215,7 @@ export interface AfterToolCallHookEvent extends ToolCallHookContext {
   executionTimeMs: number;
   mocked: boolean;
   /** Structured result after archival, including errors and state (e.g. blocked). */
-  result?: ToolRunResult;
+  result: ToolRunResult;
   success: boolean;
 }
 

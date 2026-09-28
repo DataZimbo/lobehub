@@ -4,9 +4,10 @@ import type {
   ToolCallErrorHookEvent,
   ToolCallHookEvent,
   ToolRunContext,
+  ToolRunResult,
 } from '@lobechat/agent-runtime';
 import { AgentRuntime } from '@lobechat/agent-runtime';
-import type { ChatToolPayload } from '@lobechat/types';
+import type { ChatToolPayload, ToolExecutor } from '@lobechat/types';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import { buildToolCallHookContext } from './toolCallHookContext';
@@ -135,6 +136,10 @@ describe('buildToolCallHookContext', () => {
   it('shares additive correlation types and keeps blocked results structured', () => {
     const event = buildToolCallHookContext(call, createContext(), runtime);
     expectTypeOf(event).toExtend<BeforeToolCallObservationEvent>();
+    expectTypeOf(event.toolCallId).toEqualTypeOf<string>();
+    expectTypeOf(event.assistantMessageId).toEqualTypeOf<string>();
+    expectTypeOf(event.executor).toEqualTypeOf<ToolExecutor>();
+    expectTypeOf(event.parentOperationId).toEqualTypeOf<string | undefined>();
     expectTypeOf({ ...event, mock: () => true }).toExtend<ToolCallHookEvent>();
     expectTypeOf({ ...event, error: 'failure' }).toExtend<ToolCallErrorHookEvent>();
 
@@ -146,6 +151,7 @@ describe('buildToolCallHookContext', () => {
       result: { content: 'blocked', state: { type: 'blocked' }, success: false },
       success: false,
     };
-    expect(after.result?.state?.type).toBe('blocked');
+    expectTypeOf(after.result).toEqualTypeOf<ToolRunResult>();
+    expect(after.result.state?.type).toBe('blocked');
   });
 });
