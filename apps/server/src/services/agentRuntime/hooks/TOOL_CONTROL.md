@@ -139,12 +139,18 @@ neither regenerates events nor calls the legacy handler.
 
 Explicit stop is a separate inline path, because no next worker may exist. Its
 order is: validate all pending members, atomically settle their rows, acknowledge
-runtime interruption, persist operation completion, then directly dispatch the
-stop event with every affected native ID. It neither starts a continuation nor
-uses the after-event ledger. A normal replay of an already interrupted,
-same-resolution stop skips notification; an unacknowledged/failed persistence of
-the stop sends none. Ordinary modern reject does not fabricate a stop; the legacy
-reject-and-halt handler retains its existing actual-halt semantics.
+runtime interruption, persist operation completion together with
+`metadata.pendingStopHookBatchId`, then directly dispatch the stop event with
+every affected native ID. Dispatch returning consumes that marker in an
+owner/batch/status-scoped update; a critical throw leaves it pending. The same
+resolution request can retry this direct dispatch while the operation remains
+`interrupted`, loading the original host hooks from existing runtime state. If
+that state is unavailable, retry fails explicitly instead of reporting delivery
+success. A successful normal replay sees no pending marker and sends nothing.
+The stop is never rolled back, and no continuation is started. Legacy terminal
+rows without a marker do not synthesize a notice. An unacknowledged stop or failed
+terminal write sends none. Ordinary modern reject does not fabricate a stop; the
+legacy reject-and-halt handler retains its existing actual-halt semantics.
 
 Notification response bodies are ignored, even if they resemble a control
 response. They cannot change tool inputs, cancellation, or human decisions.
@@ -159,12 +165,29 @@ HTTP controls do not retry automatically. A replay before preparation is saved
 may issue another HTTP request. For continuation notifications, a crash before
 delivery leaves the group pending; a crash after delivery but before saving its
 checkpoint may repeat it. If the checkpoint succeeded, a normal replacement
-worker does not repeat that group. Inline stop and the legacy direct handler keep
-their existing delivery reliability: a process crash after the terminal write but
-before dispatch can lose a notification, and an already terminal stop replay does
-not reconstruct one. A notification delivery error never rolls back the completed
-stop or human decision. There is no independent outbox, guaranteed delivery, or
+worker does not repeat that group. Inline stop uses the existing operation row's
+pending marker and runtime host state for request-driven retry: a crash before
+dispatch leaves the marker; delivery followed by a crash or failed marker removal
+may repeat the notice. Concurrent retries may also repeat delivery; the marker
+is a completion checkpoint, not a delivery lease. There is no background stop
+retry. Ordinary dispatcher failures are still swallowed and consume the marker;
+they do not gain reliable delivery. The legacy direct handler keeps its existing
+crash windows. A notification delivery error never rolls back the completed stop
+or human decision. There is no independent outbox, guaranteed delivery, or
 cross-crash exactly-once claim.
+
+### Await latency
+
+Controls await matching HTTP hooks serially, so their request time contributes
+to tool preparation before permissions/cards/execution. Each direct HTTP request
+uses the configured timeout (30 seconds by default); multiple hooks accumulate
+latency. Stop dispatch is also awaited inline after business interruption is
+persisted: the operation is stopped even while the HTTP stop response waits for
+notifications, and a critical error can fail that response without undoing the
+stop. Continuation workers await each notification group before runtime execution.
+QStash notification delivery waits for publish acknowledgement, not endpoint
+completion; its destination timeout is not an overall SDK publish deadline.
+Notification response bodies cannot modify controls, cancellation or approvals.
 
 ## Verification boundary
 

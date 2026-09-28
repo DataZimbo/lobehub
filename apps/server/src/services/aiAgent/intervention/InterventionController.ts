@@ -390,34 +390,49 @@ export class InterventionController {
       ownsStopNotification = claim === 'applied';
     }
 
+    let pendingStopHook = operation.metadata?.pendingStopHookBatchId === batchId;
+    let sourceState: AgentState | null = null;
     if (operation.status !== 'interrupted') {
-      const sourceState =
+      sourceState =
         await this.deps.agentRuntimeService.loadInterventionContinuationState(operationId);
       const interrupted = await this.deps.agentRuntimeService.interruptOperation(operationId);
       if (!interrupted) throw new Error('stopPendingApproval: operation stop was not acknowledged');
       const completed = await this.deps.agentOperationModel.recordCompletion(operationId, {
         completedAt: new Date(),
         completionReason: 'interrupted',
+        ...(sourceState && ownsStopNotification ? { pendingStopHookBatchId: batchId } : {}),
         status: 'interrupted',
       });
+      pendingStopHook = Boolean(sourceState && ownsStopNotification);
       if (!completed) throw new Error('stopPendingApproval: operation stop was not persisted');
-      if (sourceState && ownsStopNotification) {
-        await hookDispatcher.dispatch(
-          operationId,
-          'onStopByHumanIntervention',
-          buildStopByHumanInterventionEvent(
-            buildHumanInterventionHookContext(sourceState, {
-              operationId,
-              userId: this.deps.userId,
-            }),
-            {
-              reason: 'user_stop',
-              toolCallIds: targets.flatMap(({ toolCallId }) => (toolCallId ? [toolCallId] : [])),
-            },
-          ),
-          sourceState.host?.hooks,
-        );
-      }
+    }
+    if (pendingStopHook) {
+      sourceState ??=
+        await this.deps.agentRuntimeService.loadInterventionContinuationState(operationId);
+      // Expired/unavailable runtime state cannot turn an unconsumed critical
+      // notification into a successful stop response. The business stays stopped.
+      if (!sourceState)
+        throw new Error('stopPendingApproval: pending stop hook state is unavailable');
+      await hookDispatcher.dispatch(
+        operationId,
+        'onStopByHumanIntervention',
+        buildStopByHumanInterventionEvent(
+          buildHumanInterventionHookContext(sourceState, {
+            operationId,
+            userId: this.deps.userId,
+          }),
+          {
+            reason: 'user_stop',
+            toolCallIds: targets.flatMap(({ toolCallId }) => (toolCallId ? [toolCallId] : [])),
+          },
+        ),
+        sourceState.host?.hooks,
+      );
+      const consumed = await this.deps.agentOperationModel.completeStopHookNotification(
+        operationId,
+        batchId,
+      );
+      if (!consumed) throw new Error('stopPendingApproval: stop hook completion was not persisted');
     }
 
     log(

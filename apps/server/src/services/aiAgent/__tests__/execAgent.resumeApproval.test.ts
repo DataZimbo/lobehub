@@ -11,7 +11,11 @@ import { hookDispatcher } from '@/server/services/agentRuntime/hooks';
 
 import { AiAgentService } from '../index';
 
+const hookFetch = vi.hoisted(() => vi.fn());
+vi.mock('@lobechat/ssrf-safe-fetch', () => ({ ssrfSafeFetch: hookFetch }));
+
 const {
+  mockCompleteStopHookNotification,
   mockCreateOperation,
   mockFindById,
   mockFindMessagePlugin,
@@ -32,6 +36,7 @@ const {
   mockReleaseTaskCallbackReservation,
   mockTryReserveTaskCallback,
 } = vi.hoisted(() => ({
+  mockCompleteStopHookNotification: vi.fn(),
   mockEnsureInterventionContinuationStarted: vi.fn(),
   mockFindOperationById: vi.fn(),
   mockRecordCompletion: vi.fn(),
@@ -162,6 +167,7 @@ vi.mock('@/database/models/agentOperation', () => ({
     return {
       findById: mockFindOperationById,
       recordCompletion: mockRecordCompletion,
+      completeStopHookNotification: mockCompleteStopHookNotification,
     };
   }),
 }));
@@ -450,6 +456,7 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
         status: 'waiting_for_human',
       });
       mockInterruptOperation.mockResolvedValue(true);
+      mockCompleteStopHookNotification.mockResolvedValue(true);
       mockRecordCompletion.mockResolvedValue(true);
 
       await service.execAgent({
@@ -1147,6 +1154,7 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
       });
       mockFindOperationById.mockResolvedValue({ id: 'op-parked', status: 'waiting_for_human' });
       mockInterruptOperation.mockResolvedValue(true);
+      mockCompleteStopHookNotification.mockResolvedValue(true);
       mockRecordCompletion.mockResolvedValue(true);
 
       await service.execAgent({
@@ -1229,6 +1237,7 @@ describe('AiAgentService.stopPendingApproval', () => {
       status: 'waiting_for_human',
       topicId: 'topic-1',
     });
+    mockCompleteStopHookNotification.mockResolvedValue(true);
     mockRecordCompletion.mockResolvedValue(true);
     mockInterruptOperation.mockResolvedValue(true);
     service = new AiAgentService({} as unknown as LobeChatDatabase, 'user-1');
@@ -1267,6 +1276,92 @@ describe('AiAgentService.stopPendingApproval', () => {
     );
     expect(result.settledToolMessageIds).toEqual(['tool-msg-1', 'tool-msg-2']);
   });
+
+  it.each(['none', undefined] as const)(
+    'retries critical stop failure without restarting business; ordinary fallback=%s is consumed',
+    async (fallback) => {
+      let stopped = false;
+      let pendingStopHookBatchId: string | undefined;
+      mockResolveHumanApproval.mockResolvedValue('applied');
+      mockFindMessagePlugin.mockImplementation(async (id: string) => ({
+        toolCallId: `native-${id}`,
+        intervention: {
+          operationId: 'op-parked-1',
+          batchId: 'batch-1',
+          status: stopped ? 'aborted' : 'pending',
+          resolutionRequestId: 'stop-retry',
+        },
+      }));
+      mockFindOperationById.mockImplementation(async () => ({
+        id: 'op-parked-1',
+        topicId: 'topic-1',
+        status: stopped ? 'interrupted' : 'waiting_for_human',
+        metadata: { pendingStopHookBatchId },
+      }));
+      mockRecordCompletion.mockImplementation(async (_id, params) => {
+        stopped = true;
+        pendingStopHookBatchId = params.pendingStopHookBatchId;
+        return true;
+      });
+      mockCompleteStopHookNotification.mockImplementation(async () => {
+        pendingStopHookBatchId = undefined;
+        return true;
+      });
+      mockLoadInterventionContinuationState.mockResolvedValue({
+        origin: {},
+        host: {
+          hooks: [
+            {
+              id: 'stop-retry',
+              type: 'onStopByHumanIntervention',
+              webhook: { url: 'https://hooks.example/stop', fallback },
+            },
+          ],
+        },
+      });
+      hookFetch.mockImplementation(async () => {
+        expect(stopped).toBe(true);
+        return new Response('', { status: 503 });
+      });
+      const params = {
+        approvalResolutionRequestId: 'stop-retry',
+        batchId: 'batch-1',
+        operationId: 'op-parked-1',
+        toolMessageIds: ['tool-msg-1', 'tool-msg-2'],
+        topicId: 'topic-1',
+      };
+      if (fallback === 'none') {
+        await expect(service.stopPendingApproval(params)).rejects.toThrow();
+        // The same request must not report success while delivery still fails.
+        await expect(service.stopPendingApproval(params)).rejects.toThrow();
+        expect(mockCompleteStopHookNotification).not.toHaveBeenCalled();
+        mockLoadInterventionContinuationState.mockResolvedValueOnce(null);
+        await expect(service.stopPendingApproval(params)).rejects.toThrow('state is unavailable');
+        expect(hookFetch).toHaveBeenCalledTimes(2);
+        hookFetch.mockImplementation(async () => new Response('{}'));
+        // Recreate the service to exclude an implicit in-process retry cache.
+        service = new AiAgentService({} as LobeChatDatabase, 'user-1');
+        // A failed completion checkpoint may redeliver, but cannot fake success.
+        mockCompleteStopHookNotification.mockResolvedValueOnce(false);
+        await expect(service.stopPendingApproval(params)).rejects.toThrow(
+          'completion was not persisted',
+        );
+        await expect(service.stopPendingApproval(params)).resolves.toMatchObject({ success: true });
+        expect(hookFetch).toHaveBeenCalledTimes(4);
+      } else {
+        await expect(service.stopPendingApproval(params)).resolves.toMatchObject({ success: true });
+        expect(hookFetch).toHaveBeenCalledTimes(1);
+      }
+      const delivered = hookFetch.mock.calls.length;
+      await service.stopPendingApproval(params);
+      expect(hookFetch).toHaveBeenCalledTimes(delivered);
+      expect(mockInterruptOperation).toHaveBeenCalledTimes(1);
+      expect(mockRecordCompletion).toHaveBeenCalledTimes(1);
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+      expect(mockEnsureInterventionContinuationStarted).not.toHaveBeenCalled();
+      expect(mockRestoreHumanApproval).not.toHaveBeenCalled();
+    },
+  );
 
   it('notifies the complete native stop set after persistence and skips deterministic replay', async () => {
     const resolutionRequestId = 'stop-resolution';
