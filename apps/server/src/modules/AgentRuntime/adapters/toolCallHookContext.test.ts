@@ -1,0 +1,114 @@
+import type {
+  AfterToolCallHookEvent,
+  BeforeToolCallObservationEvent,
+  ToolCallErrorHookEvent,
+  ToolCallHookEvent,
+  ToolRunContext,
+} from '@lobechat/agent-runtime';
+import { AgentRuntime } from '@lobechat/agent-runtime';
+import type { ChatToolPayload } from '@lobechat/types';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
+
+import { buildToolCallHookContext } from './toolCallHookContext';
+
+const call: ChatToolPayload = {
+  apiName: 'search',
+  arguments: '{"query":"original"}',
+  executor: 'client',
+  id: 'native-call-id',
+  identifier: 'search-tool',
+  source: 'mcp',
+  type: 'default',
+};
+
+const createContext = (): ToolRunContext => ({
+  callIndex: 7,
+  effectiveManifestMap: {},
+  mode: 'single',
+  operationId: 'op-1',
+  originalArgs: { query: 'original' },
+  parentMessageId: 'assistant-1',
+  parsedArgs: { query: 'effective' },
+  state: AgentRuntime.createInitialState({ operationId: 'op-1', status: 'running', stepCount: 1 }),
+  stepIndex: 1,
+  toolMessageId: 'resumed-tool-message',
+  toolName: 'search-tool/search',
+});
+
+const runtime = {
+  operationId: 'op-1',
+  stepIndex: 1,
+  streamManager: { sendToolExecute: vi.fn() },
+  topicId: 'runtime-topic',
+  userId: 'user-1',
+  workspaceId: 'runtime-workspace',
+};
+
+describe('buildToolCallHookContext', () => {
+  it('keeps original and effective args distinct and snapshots original nested values', () => {
+    const context = createContext();
+    context.originalArgs = { filter: { query: 'original' } };
+    const event = buildToolCallHookContext(call, context, runtime);
+
+    expect(event.args).toEqual({ query: 'effective' });
+    expect(event.originalArgs).toEqual({ filter: { query: 'original' } });
+    expect(event.originalArgs).not.toBe(context.originalArgs);
+    expect(event.originalArgs?.filter).not.toBe(context.originalArgs.filter);
+    expect(event.toolCallId).toBe('native-call-id');
+    expect(event.callIndex).toBe(7);
+    expect(event.assistantMessageId).toBe('assistant-1');
+    expect(event.toolMessageId).toBe('resumed-tool-message');
+  });
+
+  it('uses effective args as the original snapshot when no rewrite was prepared', () => {
+    const context = createContext();
+    delete context.originalArgs;
+    const event = buildToolCallHookContext(call, context, runtime);
+
+    expect(event.originalArgs).toEqual(context.parsedArgs);
+    expect(event.originalArgs).not.toBe(context.parsedArgs);
+  });
+
+  it('reports the client route only when the server can forward to the client', () => {
+    expect(buildToolCallHookContext(call, createContext(), runtime)).toMatchObject({
+      executor: 'client',
+      toolSource: 'mcp',
+    });
+    expect(
+      buildToolCallHookContext(call, createContext(), { ...runtime, streamManager: {} }),
+    ).toMatchObject({ executor: 'server', toolSource: 'mcp' });
+  });
+
+  it('does not infer a parent from progress anchors or a device from a stale binding', () => {
+    const context = createContext();
+    context.state.origin = {
+      lineage: { progressAnchor: { parentOperationId: 'progress-only', toolMessageId: 'anchor' } },
+    };
+    context.state.binding = { device: { id: 'stale-device' } };
+    context.state.plan = { execution: { kind: 'sandbox', target: 'sandbox' } };
+    const event = buildToolCallHookContext(call, context, runtime);
+
+    expect(event.parentOperationId).toBeUndefined();
+    expect(event.activeDeviceId).toBeUndefined();
+    expect(event.executionTarget).toBe('sandbox');
+    expect(event.topicId).toBe('runtime-topic');
+    expect(event.workspaceId).toBe('runtime-workspace');
+  });
+
+  it('shares additive correlation types and keeps blocked results structured', () => {
+    const event = buildToolCallHookContext(call, createContext(), runtime);
+    expectTypeOf(event).toExtend<BeforeToolCallObservationEvent>();
+    expectTypeOf({ ...event, mock: () => true }).toExtend<ToolCallHookEvent>();
+    expectTypeOf({ ...event, error: 'failure' }).toExtend<ToolCallErrorHookEvent>();
+
+    const after: AfterToolCallHookEvent = {
+      ...event,
+      content: 'blocked',
+      executionTimeMs: 0,
+      mocked: false,
+      result: { content: 'blocked', state: { type: 'blocked' }, success: false },
+      success: false,
+    };
+    expect(after.result?.state?.type).toBe('blocked');
+  });
+});
