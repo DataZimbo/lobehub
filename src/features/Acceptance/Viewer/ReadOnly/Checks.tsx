@@ -104,7 +104,11 @@ const ReadCheck = ({
           <Text style={{ whiteSpace: 'pre-wrap' }}>{check.result.toulmin.evidence}</Text>
         )}
         {visualization && <VisualizationRenderer manifest={visualization} />}
-        <EvidenceList evidence={check.evidence} overlays={overlays} />
+        <EvidenceList
+          evidence={check.evidence}
+          overlays={overlays}
+          reviewNotes={activeReview?.action === 'reject' ? activeReview.annotations : undefined}
+        />
         {check.state === 'not_executed' ? (
           <Text fontSize={12} type={'secondary'}>
             {t('acceptance.focus.verifierDescription.notExecuted')}

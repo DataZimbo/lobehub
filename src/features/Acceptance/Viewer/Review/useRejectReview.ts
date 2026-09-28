@@ -1,5 +1,6 @@
 'use client';
 
+import { FULL_FRAME_RECT } from '@lobechat/const/verify';
 import type { AcceptanceReviewAnnotation } from '@lobechat/types';
 import { useModalContext } from '@lobehub/ui/base-ui';
 import { useEffect, useState } from 'react';
@@ -95,6 +96,8 @@ export const useRejectReview = ({
     ),
   );
   const [zoom, setZoom] = useState(1);
+  /** The video note being written — its frame is highlighted on the timeline. */
+  const [activeNoteKey, setActiveNoteKey] = useState<number>();
 
   // Your own screenshots (paste or upload) — attached to the reject alongside
   // the note and any circled regions.
@@ -167,6 +170,32 @@ export const useRejectReview = ({
       },
     },
 
+    activeNoteKey,
+    /**
+     * A note on the active video: a region on one frame, a whole frame, or a
+     * span. A note without a region covers the whole frame. Returns its key so
+     * the stage can focus the note that was just made.
+     */
+    addVideoNote: (note: {
+      disputes?: AcceptanceReviewAnnotation['disputes'];
+      rect?: AcceptanceReviewAnnotation['rect'];
+      time: NonNullable<AcceptanceReviewAnnotation['time']>;
+    }) => {
+      const key = nextAnnotationKey();
+      setAnnotations((previous) => [
+        ...previous,
+        {
+          comment: '',
+          disputes: note.disputes,
+          evidenceId: activeEvidence!.id,
+          key,
+          rect: note.rect ?? { ...FULL_FRAME_RECT },
+          time: note.time,
+        },
+      ]);
+      setActiveNoteKey(key);
+      return key;
+    },
     editAnnotation: (key: number, value: string) =>
       setAnnotations((previous) =>
         previous.map((item) => (item.key === key ? { ...item, comment: value } : item)),
@@ -176,6 +205,7 @@ export const useRejectReview = ({
       selectEvidence(evidence.findIndex((item) => item.id === evidenceId));
       advance('edit-region');
     },
+    setActiveNoteKey,
     removeAnnotation: (key: number) =>
       setAnnotations((previous) => previous.filter((item) => item.key !== key)),
     removeAttachment: remove,

@@ -1,5 +1,6 @@
 'use client';
 
+import { readEvidenceChapters } from '@lobechat/const/verify';
 import type { AcceptanceCommentThread } from '@lobechat/types';
 import { copyToClipboard, Flexbox, Icon, TextArea, Tooltip } from '@lobehub/ui';
 import { ActionIcon, Button, Tag, Text } from '@lobehub/ui/base-ui';
@@ -38,7 +39,12 @@ import { openEvidenceCommentModal } from '../Comments/EvidenceCommentModal';
 import { useAcceptanceComments } from '../Comments/hooks';
 import ThreadEvidence from '../Comments/ThreadEvidence';
 import { threadsForCheck } from '../Comments/threads';
-import { evidenceCounts, hasAnnotatableEvidence, isAnnotatable } from '../Evidence/evidence';
+import {
+  evidenceCounts,
+  hasAnnotatableEvidence,
+  hasRejectableEvidence,
+  isRejectable,
+} from '../Evidence/evidence';
 import { EvidenceList } from '../Evidence/EvidenceList';
 import type { EvidenceOverlayMap } from '../Evidence/overlay';
 import { openCheckRejectModal } from '../Review/CheckRejectModal';
@@ -262,9 +268,12 @@ export const AcceptanceCheckRow = memo<{
         checkDescription: check.planItem?.description,
         checkTitle: `C${check.seq} · ${title}`,
         draftKey: `${check.result?.id ?? 'unexecuted'}:${check.id}`,
-        evidence: check.evidence
-          .filter((item) => isAnnotatable(item))
-          .map((item) => ({ fileUrl: item.fileUrl!, id: item.id })),
+        evidence: check.evidence.filter(isRejectable).map((item) => ({
+          chapters: item.type === 'video' ? readEvidenceChapters(item.metadata) : undefined,
+          fileUrl: item.fileUrl!,
+          id: item.id,
+          type: item.type,
+        })),
         initialAnnotations: fromProposal?.annotations ?? undefined,
         initialComment: fromProposal?.comment ?? reviewComment,
         onConfirm: async ({ annotations, comment, fileIds }) => {
@@ -641,6 +650,7 @@ export const AcceptanceCheckRow = memo<{
             <EvidenceList
               evidence={check.evidence}
               overlays={commentOverlays}
+              reviewNotes={activeReview?.action === 'reject' ? activeReview.annotations : undefined}
               onReviewEvidence={canReview ? (id) => openReject(undefined, id) : undefined}
             />
             {staleThreads.length > 0 && (
@@ -829,7 +839,7 @@ export const AcceptanceCheckRow = memo<{
               not a verdict. The rounds this check already went through then
               sit between that and the verdict buttons: context for the
               decision, never an appendix to one already made. */}
-            {detailMode && reviewable && !activeReview && hasAnnotatableEvidence(check) && (
+            {detailMode && reviewable && !activeReview && hasRejectableEvidence(check) && (
               <Button
                 outdent
                 icon={<Icon icon={Images} />}
