@@ -5,12 +5,15 @@ import {
   agentHookWebhookSchema,
   parseToolCallHookResponse,
 } from '@lobechat/types';
+import { QstashError } from '@upstash/qstash';
 
 import { OtelQstashClient } from '@/libs/qstash';
 
 import type { AgentHookWebhook } from './types';
 
 class HookHttpError extends Error {
+  readonly status?: number;
+
   constructor(
     public readonly code:
       | 'configuration'
@@ -19,9 +22,11 @@ class HookHttpError extends Error {
       | 'network_error'
       | 'response_too_large'
       | 'timeout',
+    diagnostic?: { message: string; status?: number },
   ) {
-    super(`Hook HTTP request failed: ${code}`);
+    super(`Hook HTTP request failed: ${code}${diagnostic ? `: ${diagnostic.message}` : ''}`);
     this.name = 'HookHttpError';
+    this.status = diagnostic?.status;
   }
 }
 
@@ -131,7 +136,8 @@ export async function deliverWebhook(
   const url = resolveUrl(webhook.url);
   const headers = resolveWebhookHeaders(webhook);
   try {
-    if (!process.env.QSTASH_TOKEN) throw new HookHttpError('configuration');
+    if (!process.env.QSTASH_TOKEN)
+      throw new HookHttpError('configuration', { message: 'QSTASH_TOKEN not available' });
     const client = new OtelQstashClient({ token: process.env.QSTASH_TOKEN });
     await client.publishJSON({
       body: payload,
@@ -145,9 +151,20 @@ export async function deliverWebhook(
       timeout: webhook.timeout ?? 30,
       url,
     });
-  } catch {
-    // Do not log the SDK error: it may contain destination headers or remote response text.
-    if (webhook.fallback === 'none') throw new HookHttpError('network_error');
+  } catch (error) {
+    // Keep safe diagnostics, never the SDK message/cause, headers or remote response text.
+    const status = error instanceof QstashError ? error.status : undefined;
+    const failure =
+      error instanceof HookHttpError
+        ? error
+        : status !== undefined
+          ? new HookHttpError('http_error', {
+              message: `QStash publish failed (HTTP ${status})`,
+              status,
+            })
+          : new HookHttpError('network_error', { message: 'QStash publish failed' });
+    if (webhook.fallback === 'none') throw failure;
+    console.error('[HookDispatcher] QStash delivery failed, falling back to fetch', failure);
     await fetchBody(webhook, payload);
   }
 }
