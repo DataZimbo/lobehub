@@ -1,5 +1,9 @@
 # D integrated execution checkpoint — 2026-09-28
 
+Current r20/r21 supplement: [real token Stop](cloud-token-checkpoint.md) verifies actual notification-token critical retry (500→500→200→replay, HTTP receipts 1→2→3→3). [Partial Review](cloud-partial-checkpoint.md) verifies authenticated token claims, actual local queue workers, B→C repark with pending sibling retained, old-token terminal no-ops, stale-revision 409, reject/approve/Stop IDs and no tool side effects. Both served private Cloud `69c38102` + OSS `ab5d35a6d7`. The actual token Web URL is an unknown route; pending chat remained a skeleton and final cancelled/rejected tools still show false Edited/+1. These API results are not complete UI or inference passes.
+
+Earlier dated supplements below retain their original SHA and then-current gaps; they do not override the r20/r21 scope above.
+
 Current supplement: [r17 Cloud Stop route repair](cloud-stop-route-checkpoint.md), served integration `196787eedd`. Source critical retry and ordinary replay are observed; token/full UI are not. Current test-only successor is `ab5d35a6d7` (C2 32d0c692); D types are back to 1444/1444 with the five new diagnostics removed and full text equal after line/column normalization, still not a pass. Earlier sections and tables below are historical observations under their stated SHAs; superseding r12/r15/r16/r17 evidence is linked in the [current index](README.md). Independent code review is exhausted; final acceptance checker remains unused.
 
 Latest notification-only supplement: [notification-checkpoint.md](notification-checkpoint.md), integration `a471e3876a3ecd25cb233108754e1be3f0ac2cc3`. The historical observations below retain their original SHA and open conditions.
