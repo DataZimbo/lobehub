@@ -5,7 +5,9 @@ import {
   createToolPreparation,
   GeneralChatAgent,
 } from '@lobechat/agent-runtime';
-import type { ChatToolPayload } from '@lobechat/types';
+import { MessagesEngine } from '@lobechat/context-engine';
+import { parse } from '@lobechat/conversation-flow';
+import type { ChatToolPayload, UIChatMessage } from '@lobechat/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentHook } from '@/server/services/agentRuntime/hooks';
@@ -530,6 +532,64 @@ describe('beforeToolCall control pipeline', () => {
     );
     expect(result.events).toContainEqual(expect.objectContaining({ type: 'tool_result' }));
   });
+  it('projects rewritten durable tool input into the cold approval card and next LLM context', async () => {
+    fetchHook.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: 'beforeToolCall',
+              permissionDecision: 'allow',
+              updatedInput: { path: 'B.txt' },
+            },
+          }),
+        ),
+    );
+    const fixture = setup([control()]);
+    fixture.state.userInterventionConfig = { approvalMode: 'manual' };
+    const original = call();
+    const parked = await fixture.step([structuredClone(original)]);
+    expect(parked.newState.status).toBe('waiting_for_human');
+    expect(fixture.execute).not.toHaveBeenCalled();
+    const history = [
+      { id: 'user', role: 'user', content: 'write file', createdAt: 0, updatedAt: 0 },
+      {
+        id: 'assistant',
+        parentId: 'user',
+        role: 'assistant',
+        content: '',
+        tools: [original],
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      ...fixture.rows.map((row) => ({ ...row, createdAt: 2, updatedAt: 2 })),
+    ] as UIChatMessage[];
+    const cold = parse(structuredClone(history)).flatList;
+    const card = cold.find(({ role }) => role === 'assistantGroup')?.children?.[0].tools?.[0];
+    expect(card).toMatchObject({
+      id: original.id,
+      arguments: '{"path":"B.txt"}',
+      intervention: { status: 'pending' },
+      result_msg_id: 'row-1',
+    });
+    expect(card?.result?.state).toMatchObject({ hookPreparation: { originalArgs: { path: 'a' } } });
+    // Cold queue recovery uses flattened groups; an inline single tool may
+    // retain raw history. Both must project the same effective request.
+    for (const messages of [cold, structuredClone(history)]) {
+      const prompt = await new MessagesEngine({
+        messages,
+        model: 'gpt-4',
+        provider: 'openai',
+        enableSystemDate: false,
+        capabilities: { isCanUseFC: () => true },
+      }).process();
+      expect(prompt.messages.find(({ role }) => role === 'assistant')).toMatchObject({
+        tool_calls: [{ id: original.id, function: { arguments: '{"path":"B.txt"}' } }],
+      });
+    }
+    expect(history[1].tools?.[0].arguments).toBe('{"path":"a"}');
+  });
+
   it('replaces inputs serially before permission, card and execution, retaining the original snapshot', async () => {
     const inputs: Record<string, unknown>[] = [];
     fetchHook.mockImplementation(async (_url, init) => {
