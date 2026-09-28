@@ -21,6 +21,13 @@ const RUNTIME_LANGUAGE: Record<string, string> = {
 const withTrailingNewline = (value: string) =>
   value === '' || value.endsWith('\n') ? value : `${value}\n`;
 
+/**
+ * Show every line. Widget scripts are short, and the collapsed-context
+ * separator of the diff renderer is a hardcoded English label ("N unmodified
+ * lines") that cannot be localized.
+ */
+const DIFF_OPTIONS = { expandUnchanged: true };
+
 /** The declarative half of a version: everything besides the script. */
 const contractOf = (version: DashboardWidgetVersionItem) =>
   JSON.stringify(
@@ -55,6 +62,7 @@ export const ScriptDiff = memo<ScriptDiffProps>(({ base, target }) => {
         </Text>
       ) : (
         <CodeDiff
+          diffOptions={DIFF_OPTIONS}
           language={language}
           newContent={withTrailingNewline(target.script)}
           oldContent={withTrailingNewline(base?.script ?? '')}
@@ -68,6 +76,7 @@ export const ScriptDiff = memo<ScriptDiffProps>(({ base, target }) => {
             {t('portal.diff.manifest')}
           </Text>
           <CodeDiff
+            diffOptions={DIFF_OPTIONS}
             language={'json'}
             newContent={withTrailingNewline(targetContract)}
             oldContent={withTrailingNewline(baseContract!)}
