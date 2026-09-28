@@ -60,12 +60,17 @@ arguments. A changed input re-enters the normal agent permission/audit path;
 produces a blocked result with no execution.
 
 A new or rebuilt continuation requires the authoritative source runtime state.
-If it is missing (including after the state manager's two-hour TTL), startup
-fails explicitly before creating/scheduling an operation; absence is never
-interpreted as an empty hook list. Legacy approval claims are rolled back to
+If it is missing (including after the state manager's two-hour TTL), or loading
+it throws, preflight fails before successor message creation, history/tool
+discovery, or operation creation/scheduling; absence is never interpreted as an
+empty hook list. This preflight runs after ready-continuation reuse, reads the
+source once, and hands the validated snapshot to startup. Legacy approval claims are rolled back to
 their prior tool snapshots, leaving the reviewed effective input and context
 intact. Generic durable claims retain their existing same-request retry ownership
-and report the error without scheduling a worker or dispatching notifications.
+and propagate the error without scheduling a worker or dispatching notifications.
+Both paths can retry a transient source-read failure; generic retry uses the same
+resolution identity and does not consume another claim. Partial decisions do not
+claim or rewrite still-pending siblings on failure.
 A ready deterministic continuation can still resume from its own persisted
 hooks/events after the older source expires. This does not extend the source TTL
 or reconstruct lost hook configuration from tool input/context fragments.
