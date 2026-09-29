@@ -7,7 +7,7 @@ import { cssVar } from 'antd-style';
 import { Flag, Repeat } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-import { CLAIM_COLOR } from './styles';
+import { ClaimLabel } from './ClaimLabel';
 import { formatVideoTime } from './videoTime';
 
 /**
@@ -45,10 +45,7 @@ export const VideoFeedbackNotes = ({ notes }: { notes: AcceptanceReviewAnnotatio
             <Flexbox gap={2}>
               {note.disputes?.note && (
                 <Text fontSize={12} type={'secondary'}>
-                  <span style={{ color: CLAIM_COLOR[note.disputes.kind] }}>
-                    {t(`acceptance.video.claim.${note.disputes.kind}`)}
-                  </span>
-                  {' · '}
+                  <ClaimLabel kind={note.disputes.kind} style={{ marginInlineEnd: 6 }} />
                   {note.disputes.note}
                 </Text>
               )}

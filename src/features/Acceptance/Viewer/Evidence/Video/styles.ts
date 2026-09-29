@@ -121,14 +121,13 @@ export const styles = createStaticStyles(({ css }) => ({
     transform: translateX(-50%);
 
     display: flex;
-    gap: 8px;
-    align-items: center;
+    flex-direction: column;
+    gap: 2px;
 
     max-width: 80%;
-    padding-block: 6px;
-    padding-inline: 10px 8px;
-    border-inline-start: 3px solid;
-    border-radius: 6px;
+    padding-block: 6px 8px;
+    padding-inline: 12px;
+    border-radius: 8px;
 
     font-size: 13px;
     line-height: 1.5;
@@ -136,10 +135,14 @@ export const styles = createStaticStyles(({ css }) => ({
 
     background: rgb(0 0 0 / 78%);
   `,
-  captionKind: css`
-    flex: none;
-    font-size: 11px;
-    font-weight: 600;
+  captionTitle: css`
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+
+    font-size: 12px;
+    color: rgb(255 255 255 / 85%);
   `,
   dispute: css`
     cursor: pointer;
@@ -296,14 +299,6 @@ export const styles = createStaticStyles(({ css }) => ({
 
     &:hover {
       transform: translateX(-50%) scale(1.4);
-    }
-  `,
-  claimMarkFlag: css`
-    transform: translateX(-50%) rotate(45deg);
-    border-radius: 1px;
-
-    &:hover {
-      transform: translateX(-50%) rotate(45deg) scale(1.4);
     }
   `,
   noteMark: css`

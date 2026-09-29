@@ -6,6 +6,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ClaimLabel } from './ClaimLabel';
 import { CLAIM_COLOR, styles } from './styles';
 import type { VideoLoop } from './useVideoClock';
 import { claimsOf, formatVideoTime, stepAt, stepsOf } from './videoTime';
@@ -35,7 +36,6 @@ interface HoverState {
  * queue behind each other so a fast sweep never stalls on stale frames.
  */
 const HoverPreview = ({ claim, comment, src, step, time, x }: HoverState & { src: string }) => {
-  const { t } = useTranslation('verify');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const probeRef = useRef<HTMLVideoElement>(null);
   const pending = useRef<number | null>(null);
@@ -77,9 +77,7 @@ const HoverPreview = ({ claim, comment, src, step, time, x }: HoverState & { src
         {step && <span style={{ color: '#999' }}> · {step}</span>}
         {claim && (
           <div>
-            <span style={{ color: CLAIM_COLOR[claim.kind], fontWeight: 600 }}>
-              {t(`acceptance.video.claim.${claim.kind}`)}
-            </span>{' '}
+            <ClaimLabel kind={claim.kind} style={{ marginInlineEnd: 6 }} />
             {claim.note}
           </div>
         )}
@@ -232,7 +230,7 @@ export const VideoTimeline = ({
         {claimsOf(chapters).map((claim) => (
           <button
             aria-label={`${t(`acceptance.video.claim.${claim.kind}`)} ${formatVideoTime(claim.t)}: ${claim.note}`}
-            className={cx(styles.claimMark, claim.kind === 'flag' && styles.claimMarkFlag)}
+            className={styles.claimMark}
             key={`claim-${claim.kind}-${claim.t}`}
             style={{ background: CLAIM_COLOR[claim.kind], left: pct(claim.t) }}
             type={'button'}

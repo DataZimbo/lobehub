@@ -8,7 +8,8 @@ import { Captions, Check, ChevronLeft, ChevronRight, Maximize, Pause, Play } fro
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { CLAIM_COLOR, styles } from './styles';
+import { ClaimLabel } from './ClaimLabel';
+import { styles } from './styles';
 import type { VideoClock } from './useVideoClock';
 import { claimsOf, formatVideoTime, frameOf, isOnFrame, PLAYBACK_RATES, stepAt } from './videoTime';
 
@@ -60,23 +61,15 @@ export const ClaimCaption = ({
 }: {
   action?: ReactNode;
   claim: VerifyEvidenceChapter;
-}) => {
-  const { t } = useTranslation('verify');
-
-  return (
-    <div
-      className={styles.caption}
-      style={{ borderColor: CLAIM_COLOR[claim.kind] }}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      <span className={styles.captionKind} style={{ color: CLAIM_COLOR[claim.kind] }}>
-        {t(`acceptance.video.claim.${claim.kind}`)}
-      </span>
-      <span>{claim.note}</span>
+}) => (
+  <div className={styles.caption} onPointerDown={(event) => event.stopPropagation()}>
+    <div className={styles.captionTitle}>
+      <ClaimLabel kind={claim.kind} />
       {action}
     </div>
-  );
-};
+    <div>{claim.note}</div>
+  </div>
+);
 
 interface VideoControlBarProps {
   captions?: boolean;

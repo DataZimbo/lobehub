@@ -3,11 +3,11 @@
 import type { VerifyEvidenceChapter } from '@lobechat/types';
 import { Flexbox, Icon } from '@lobehub/ui';
 import { createStaticStyles, cssVar } from 'antd-style';
-import { ChevronDown, ChevronRight, CircleCheck, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { CLAIM_COLOR } from './styles';
+import { ClaimDot } from './ClaimLabel';
 import { claimsOf, formatVideoClock, formatVideoTime, stepsOf } from './videoTime';
 
 const styles = createStaticStyles(({ css }) => ({
@@ -141,11 +141,9 @@ export const VideoClaimList = ({ chapters, onSeek }: VideoClaimListProps) => {
             type={'button'}
             onClick={() => onSeek(claim.t)}
           >
-            <Icon
-              icon={claim.kind === 'flag' ? TriangleAlert : CircleCheck}
-              size={14}
-              style={{ color: CLAIM_COLOR[claim.kind], flex: 'none', transform: 'translateY(2px)' }}
-            />
+            <span style={{ alignSelf: 'center', display: 'inline-flex' }}>
+              <ClaimDot kind={claim.kind} />
+            </span>
             <span className={styles.time}>{formatVideoTime(claim.t)}</span>
             <span>{claim.note}</span>
           </button>

@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 
 import type { DraftAnnotationEntry } from '../../Review/rejectDraft';
 import { RegionNoteRow } from '../RegionNotes';
-import { CLAIM_COLOR } from './styles';
+import { ClaimLabel } from './ClaimLabel';
 import { formatVideoTime, frameOf } from './videoTime';
 
 const styles = createStaticStyles(({ css }) => ({
@@ -39,10 +39,13 @@ const styles = createStaticStyles(({ css }) => ({
     box-shadow: 0 0 0 1px ${cssVar.colorError};
   `,
   quote: css`
-    padding-block: 4px;
-    padding-inline: 8px;
-    border-inline-start: 3px solid;
-    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    padding-block: 6px;
+    padding-inline: 10px;
+    border-radius: 6px;
 
     font-size: 12px;
     color: ${cssVar.colorTextSecondary};
@@ -108,14 +111,9 @@ export const VideoNotes = ({
               <span style={{ color: cssVar.colorTextTertiary, fontSize: 11 }}>{detail}</span>
             </Flexbox>
             {note.disputes && (
-              <div
-                className={styles.quote}
-                style={{ borderColor: CLAIM_COLOR[note.disputes.kind] }}
-              >
-                <span style={{ color: CLAIM_COLOR[note.disputes.kind], fontWeight: 600 }}>
-                  {t(`acceptance.video.claim.${note.disputes.kind}`)}
-                </span>{' '}
-                {note.disputes.note}
+              <div className={styles.quote}>
+                <ClaimLabel kind={note.disputes.kind} />
+                <div>{note.disputes.note}</div>
               </div>
             )}
           </Flexbox>
