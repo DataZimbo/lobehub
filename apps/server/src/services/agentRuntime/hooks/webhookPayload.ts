@@ -1,5 +1,8 @@
 import type { AgentHookType } from '@lobechat/agent-runtime';
 
+import { UserModel } from '@/database/models/user';
+import { getServerDB } from '@/database/server';
+
 import type { HookDeliveryContext } from './deliveryContext';
 import type { AgentHookWebhook, AgentHookWebhookPayload } from './types';
 
@@ -9,10 +12,6 @@ const EMAIL_CACHE_CAPACITY = 1000;
 /** Email is optional enrichment; database failures must not suppress the hook. */
 const readUserEmail = async (userId: string): Promise<string | undefined> => {
   try {
-    const [{ UserModel }, { getServerDB }] = await Promise.all([
-      import('@/database/models/user'),
-      import('@/database/server'),
-    ]);
     const users = await UserModel.getEmailsByIds(await getServerDB(), [userId]);
     return users.find((user) => user.id === userId)?.email ?? undefined;
   } catch {
