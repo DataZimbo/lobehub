@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
 
-import { DASHBOARD_GRID_COLUMNS, flowLayouts, resolveLayouts, sortByPosition } from './layout';
+import {
+  DASHBOARD_GRID_COLUMNS,
+  DASHBOARD_GRID_GAP,
+  DASHBOARD_ROW_HEIGHT,
+  defaultWidgetSize,
+  flowLayouts,
+  resolveLayouts,
+  sortByPosition,
+} from './layout';
+
+describe('defaultWidgetSize', () => {
+  it('gives a stat card room for its value, description and trend line', () => {
+    const { h } = defaultWidgetSize('stat');
+    const cellHeight = h * DASHBOARD_ROW_HEIGHT + (h - 1) * DASHBOARD_GRID_GAP;
+    // padding 24 + header 22 + label/value/description 83 + trend 28 + footer 18 + gaps 28
+    expect(cellHeight).toBeGreaterThanOrEqual(203);
+  });
+});
 
 describe('resolveLayouts', () => {
   it('keeps persisted layouts that fit and do not collide', () => {
@@ -20,9 +37,9 @@ describe('resolveLayouts', () => {
       { id: 'stat', outputType: 'stat' },
       { id: 'table', outputType: 'table' },
     ]);
-    expect(result.stat).toEqual({ h: 2, w: 3, x: 3, y: 0 });
-    // A full-width table cannot share row 0 with anything.
-    expect(result.table).toEqual({ h: 4, w: DASHBOARD_GRID_COLUMNS, x: 0, y: 2 });
+    expect(result.stat).toEqual({ h: 3, w: 3, x: 3, y: 0 });
+    // A full-width table cannot share rows 0-2 with anything.
+    expect(result.table).toEqual({ h: 4, w: DASHBOARD_GRID_COLUMNS, x: 0, y: 3 });
   });
 
   it('re-places a colliding or out-of-grid layout instead of overlapping', () => {

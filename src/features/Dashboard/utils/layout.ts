@@ -15,7 +15,9 @@ export const DASHBOARD_WIDTH_PRESETS = [3, 4, 6, 8, 12] as const;
 const DEFAULT_SIZE: Record<WidgetOutputType, { h: number; w: number }> = {
   list: { h: 4, w: 6 },
   series: { h: 4, w: 6 },
-  stat: { h: 2, w: 3 },
+  // Three rows (240px): header, label, value, description, the 28px trend line
+  // and the updated-at footer. Two rows squeezed the trend line to nothing.
+  stat: { h: 3, w: 3 },
   table: { h: 4, w: 12 },
 };
 
