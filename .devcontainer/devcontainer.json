@@ -9,6 +9,16 @@
       "version": "latest"
     }
   },
-  "postCreateCommand": "pnpm install",
-  "forwardPorts": [3010, 9876]
+  "postCreateCommand": "corepack enable && pnpm install",
+  "forwardPorts": [3010, 9876],
+  "portsAttributes": {
+    "3010": {
+      "label": "LobeHub Next.js",
+      "onAutoForward": "openBrowser"
+    },
+    "9876": {
+      "label": "LobeHub Vite SPA",
+      "onAutoForward": "openBrowser"
+    }
+  }
 }
