@@ -363,6 +363,8 @@ export const isMyTaskListKey = (key: unknown): boolean =>
 export const goalKeys = {
   graph: def('goal:graph', (goalId: string) => ['goal:graph', goalId]),
   metricSeries: def('goal:metricSeries', (goalId: string) => ['goal:metricSeries', goalId]),
+  /** Clarifications waiting on the user across every goal they own. */
+  pendingClarifications: def('goal:pendingClarifications', () => ['goal:pendingClarifications']),
   /** Goals whose planning conversation is this topic (`subject_type = 'topic'`). */
   topicGoals: def('goal:topicGoals', (topicId: string) => ['goal:topicGoals', topicId]),
 };
@@ -592,7 +594,7 @@ export const serverConfigKeys = {
 
 // ---- discover (marketplace) ---------------------------------------------
 // NOTE: discover/eval/ragEval/knowledgeBase/device/userMemory/agentKnowledge/
-// agentBot/file/chatTool prefixes are deliberately kept OUT of `CACHE_TIERS`
+// agentBot/file prefixes are deliberately kept OUT of `CACHE_TIERS`
 // (see localStorageProvider.ts) so this key-convergence introduces no new
 // persistence — they stay memory-only exactly as before.
 export const discoverKeys = {
@@ -836,6 +838,11 @@ export const knowledgeBaseKeys = {
 };
 
 // ---- device -------------------------------------------------------------
+export const trashKeys = {
+  countByType: def('trash:countByType', () => ['trash:countByType']),
+  list: def('trash:list', (resourceType?: string | null) => ['trash:list', resourceType ?? 'all']),
+};
+
 export const deviceKeys = {
   appUpdateState: def('device:appUpdateState', (workspaceId: string | null, deviceId: string) => [
     'device:appUpdateState',
@@ -1036,11 +1043,6 @@ export const agentBotKeys = {
 export const fileKeys = {
   knowledgeItems: def('file:knowledgeItems', (params: unknown) => ['file:knowledgeItems', params]),
   ttsFile: def('file:ttsFile', (messageId: string) => ['file:ttsFile', messageId]),
-};
-
-// ---- chat tools ---------------------------------------------------------
-export const chatToolKeys = {
-  interpreterFile: def('chat:interpreterFile', (id: string) => ['chat:interpreterFile', id]),
 };
 
 // =========================================================================
@@ -1541,7 +1543,6 @@ export const swrKeys = {
   brief: briefKeys,
   builtinAgent: builtinAgentKeys,
   changelog: changelogKeys,
-  chatTool: chatToolKeys,
   cron: cronKeys,
   device: deviceKeys,
   discover: discoverKeys,
@@ -1589,6 +1590,7 @@ export const swrKeys = {
   documentComment: documentCommentKeys,
   documentLike: documentLikeKeys,
   topicAction: topicActionKeys,
+  trash: trashKeys,
   user: userKeys,
   userMemory: userMemoryKeys,
   verify: verifyKeys,

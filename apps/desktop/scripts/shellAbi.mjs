@@ -13,6 +13,8 @@ const TRACKED_INPUTS = [
   'locales/zh-CN/electron.json',
   'apps/desktop/build',
   'apps/desktop/electron-builder.mjs',
+  'apps/desktop/scripts/packBuiltinCore.mjs',
+  'apps/desktop/scripts/assembleCore.mjs',
   'apps/desktop/native-deps.config.mjs',
   'apps/desktop/module-deps.config.mjs',
   'apps/desktop/external-runtime-deps.config.mjs',
