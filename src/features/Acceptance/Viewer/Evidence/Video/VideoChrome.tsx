@@ -1,10 +1,21 @@
 'use client';
 
 import type { VerifyEvidenceChapter } from '@lobechat/types';
-import { Flexbox, Icon } from '@lobehub/ui';
-import { DropdownMenu } from '@lobehub/ui/base-ui';
+import { Center, Flexbox, Icon } from '@lobehub/ui';
+import { Button, DropdownMenu } from '@lobehub/ui/base-ui';
 import { cx } from 'antd-style';
-import { Captions, Check, ChevronLeft, ChevronRight, Maximize, Pause, Play } from 'lucide-react';
+import {
+  AlertTriangle,
+  Captions,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Maximize,
+  Pause,
+  Play,
+  RefreshCw,
+} from 'lucide-react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -70,6 +81,30 @@ export const ClaimCaption = ({
     <div>{claim.note}</div>
   </div>
 );
+
+/**
+ * A video that failed to load — usually a signed link that expired while the
+ * page stayed open. Reload re-signs nothing but retries a transient failure;
+ * the download link opens the file directly as the way out.
+ */
+export const VideoLoadError = ({ onReload, src }: { onReload: () => void; src: string }) => {
+  const { t } = useTranslation('verify');
+
+  return (
+    <Center className={styles.overlay} gap={10} style={{ color: '#ccc' }}>
+      <Icon icon={AlertTriangle} size={22} />
+      <span style={{ fontSize: 13 }}>{t('acceptance.video.loadFailed')}</span>
+      <Flexbox horizontal gap={8}>
+        <Button icon={RefreshCw} size={'small'} onClick={onReload}>
+          {t('acceptance.video.reload')}
+        </Button>
+        <Button href={src} icon={Download} size={'small'} target={'_blank'}>
+          {t('acceptance.video.download')}
+        </Button>
+      </Flexbox>
+    </Center>
+  );
+};
 
 interface VideoControlBarProps {
   captions?: boolean;
@@ -176,6 +211,9 @@ export const VideoControlBar = ({
  * caller can stop the page from also scrolling on Space or the arrows.
  */
 export const handlePlaybackKey = (event: KeyboardEvent | ReactKeyboardEvent, clock: VideoClock) => {
+  // A focused button owns Space and Enter — they must activate it, not play.
+  if (event.target instanceof HTMLButtonElement && (event.key === ' ' || event.key === 'Enter'))
+    return false;
   const { controls, rate, time } = clock;
   const nextRate = (direction: 1 | -1) => {
     const index = PLAYBACK_RATES.indexOf(rate as (typeof PLAYBACK_RATES)[number]);

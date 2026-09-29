@@ -40,9 +40,9 @@ import { useAcceptanceComments } from '../Comments/hooks';
 import ThreadEvidence from '../Comments/ThreadEvidence';
 import { threadsForCheck } from '../Comments/threads';
 import {
+  canMarkEvidence,
   evidenceCounts,
   hasAnnotatableEvidence,
-  hasRejectableEvidence,
   isRejectable,
 } from '../Evidence/evidence';
 import { EvidenceList } from '../Evidence/EvidenceList';
@@ -839,7 +839,7 @@ export const AcceptanceCheckRow = memo<{
               not a verdict. The rounds this check already went through then
               sit between that and the verdict buttons: context for the
               decision, never an appendix to one already made. */}
-            {detailMode && reviewable && !activeReview && hasRejectableEvidence(check) && (
+            {detailMode && reviewable && !activeReview && canMarkEvidence(check, desktop) && (
               <Button
                 outdent
                 icon={<Icon icon={Images} />}

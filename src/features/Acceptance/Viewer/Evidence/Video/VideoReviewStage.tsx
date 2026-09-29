@@ -20,6 +20,7 @@ import {
   FrameRegions,
   handlePlaybackKey,
   VideoControlBar,
+  VideoLoadError,
 } from './VideoChrome';
 import { claimAt, formatVideoTime, frameOf } from './videoTime';
 import { VideoTimeline } from './VideoTimeline';
@@ -309,16 +310,7 @@ export const VideoReviewStage = memo<VideoReviewStageProps>(
                   )}
                 </div>
               )}
-              {status === 'error' && (
-                <Flexbox
-                  align={'center'}
-                  className={styles.overlay}
-                  justify={'center'}
-                  style={{ color: '#ccc' }}
-                >
-                  {t('acceptance.video.loadFailed')}
-                </Flexbox>
-              )}
+              {status === 'error' && <VideoLoadError src={src} onReload={controls.reload} />}
             </div>
           </div>
         </div>

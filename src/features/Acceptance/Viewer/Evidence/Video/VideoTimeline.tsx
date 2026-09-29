@@ -234,10 +234,10 @@ export const VideoTimeline = ({
             key={`claim-${claim.kind}-${claim.t}`}
             style={{ background: CLAIM_COLOR[claim.kind], left: pct(claim.t) }}
             type={'button'}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              onClaimClick(claim);
-            }}
+            // The press must not also scrub the track; the click (pointer, Enter
+            // or Space) is what seeks, so the marker works from the keyboard.
+            onClick={() => onClaimClick(claim)}
+            onPointerDown={(event) => event.stopPropagation()}
           />
         ))}
         {notes.map((note) => (
@@ -247,10 +247,10 @@ export const VideoTimeline = ({
             key={`note-${note.key}`}
             style={{ left: pct(note.start) }}
             type={'button'}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              onNoteClick(note);
-            }}
+            // The press must not also scrub the track; the click (pointer, Enter
+            // or Space) is what seeks, so the marker works from the keyboard.
+            onClick={() => onNoteClick(note)}
+            onPointerDown={(event) => event.stopPropagation()}
           />
         ))}
       </div>

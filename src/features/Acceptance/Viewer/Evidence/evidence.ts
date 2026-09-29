@@ -28,6 +28,14 @@ export const isRejectable = (item: AcceptanceEvidence) =>
 
 export const hasRejectableEvidence = (check: AcceptanceCheck) => check.evidence.some(isRejectable);
 
+/**
+ * Whether the reject modal has anything to mark on this device: phones review
+ * images only (the frame-anchored video stage is desktop-only), so a
+ * video-only check offers no marking entry there.
+ */
+export const canMarkEvidence = (check: AcceptanceCheck, desktop: boolean) =>
+  desktop ? hasRejectableEvidence(check) : hasAnnotatableEvidence(check);
+
 export const evidenceCounts = (evidence: AcceptanceEvidence[]) => {
   const counts = { audio: 0, file: 0, image: 0, video: 0 };
   for (const item of evidence) {

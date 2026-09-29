@@ -2,16 +2,20 @@
 
 import { isFullFrameRect } from '@lobechat/const/verify';
 import type { AcceptanceReviewAnnotation, VerifyEvidenceChapter } from '@lobechat/types';
-import { Center, Flexbox, Icon } from '@lobehub/ui';
-import { Button } from '@lobehub/ui/base-ui';
-import { AlertTriangle, Download, Play, RefreshCw } from 'lucide-react';
+import { Flexbox, Icon } from '@lobehub/ui';
+import { Play } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { memo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { styles } from './styles';
 import { useVideoClock } from './useVideoClock';
-import { ClaimCaption, FrameRegions, handlePlaybackKey, VideoControlBar } from './VideoChrome';
+import {
+  ClaimCaption,
+  FrameRegions,
+  handlePlaybackKey,
+  VideoControlBar,
+  VideoLoadError,
+} from './VideoChrome';
 import { VideoClaimList } from './VideoClaimList';
 import { claimAt } from './videoTime';
 import { VideoTimeline } from './VideoTimeline';
@@ -36,7 +40,6 @@ interface VideoEvidencePlayerProps {
  */
 export const VideoEvidencePlayer = memo<VideoEvidencePlayerProps>(
   ({ caption, chapters = [], notes = [], src }) => {
-    const { t } = useTranslation('verify');
     const rootRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const clock = useVideoClock(videoRef, { src });
@@ -85,20 +88,7 @@ export const VideoEvidencePlayer = memo<VideoEvidencePlayerProps>(
                 {claim && <ClaimCaption claim={claim} />}
               </div>
             )}
-            {status === 'error' && (
-              <Center className={styles.overlay} gap={10} style={{ color: '#ccc' }}>
-                <Icon icon={AlertTriangle} size={22} />
-                <span style={{ fontSize: 13 }}>{t('acceptance.video.loadFailed')}</span>
-                <Flexbox horizontal gap={8}>
-                  <Button icon={RefreshCw} size={'small'} onClick={controls.reload}>
-                    {t('acceptance.video.reload')}
-                  </Button>
-                  <Button href={src} icon={Download} size={'small'} target={'_blank'}>
-                    {t('acceptance.video.download')}
-                  </Button>
-                </Flexbox>
-              </Center>
-            )}
+            {status === 'error' && <VideoLoadError src={src} onReload={controls.reload} />}
           </div>
           <div
             className={styles.bar}
