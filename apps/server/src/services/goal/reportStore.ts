@@ -110,13 +110,17 @@ export class GoalReportStore {
       // Only the run of the CURRENT dispatch may write. A re-dispatch reuses the
       // Task and starts a new run, and the previous one can outlive a failed
       // cancel — accepting any run in the Task's history would let it land stale
-      // content as the newest version. Runs arrive newest first; the dispatch
-      // records its operation once the run started, and until then the newest
-      // run is the current one.
+      // content as the newest version.
+      //
+      // The dispatch records its operation only once the new run has started.
+      // Until then the newest run may still be the superseded one, so a run
+      // counts only if it was created after this dispatch was claimed; with
+      // neither, nothing is current and every run is refused.
       const runs = dispatch.taskId ? await this.taskTopicModel.findByTaskId(dispatch.taskId) : [];
+      const dispatchedAt = Date.parse(dispatch.dispatchedAt);
       const current = dispatch.operationId
         ? runs.find((run) => run.operationId === dispatch.operationId)
-        : runs[0];
+        : runs.find((run) => new Date(run.createdAt).getTime() >= dispatchedAt);
       if (!caller.topicId || current?.topicId !== caller.topicId)
         throw new TRPCError({
           code: 'FORBIDDEN',

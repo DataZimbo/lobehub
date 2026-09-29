@@ -250,6 +250,64 @@ describe('GoalService wrap-up branch', () => {
   });
 
   /**
+   * Regression: while a re-dispatch was still starting its run, the receipt had
+   * no operation yet and the newest run — the superseded one — counted as
+   * current, so it could still land stale content.
+   */
+  it('refuses the superseded run while a re-dispatch has not recorded its run yet', async () => {
+    const service = new GoalService(serverDB, userId);
+    const { acceptanceTaskId, goalId, taskModel } = await runToAcceptance(service);
+    await taskModel.updateStatus(acceptanceTaskId, 'completed');
+    await service.tick(goalId);
+    await service.tick(goalId);
+    const first = (await service.graph(goalId)).report!.dispatch;
+    const [oldRun] = await new TaskTopicModel(serverDB, userId).findByTaskId(first.taskId!);
+
+    // A re-dispatch claimed its receipt, but its run has not been recorded yet.
+    const goalRow = (await serverDB.select().from(goals).where(eq(goals.id, goalId)))[0];
+    await serverDB
+      .update(goals)
+      .set({
+        config: {
+          ...goalRow.config,
+          report: {
+            ...first,
+            acceptanceKey: `${first.acceptanceKey}:again`,
+            dispatchedAt: new Date(Date.now() + 1000).toISOString(),
+            operationId: undefined,
+          },
+        },
+      })
+      .where(eq(goals.id, goalId));
+
+    const graph = await service.graph(goalId);
+    const buildNode = graph.nodes.find((node) => node.title === 'Build the thing')!;
+    const metadata: GoalReportMetadata = {
+      chapters: [
+        {
+          detours: [],
+          findingIds: [],
+          narrative: 'Built it.',
+          nodeIds: [buildNode.id],
+          title: 'Building',
+          workVersionIds: [],
+        },
+      ],
+      graphCursor: graph.events[0].id,
+      headline: 'Delivered',
+      mainline: { edgeIds: [], nodeIds: [buildNode.id] },
+      nextSteps: [],
+    };
+    await expect(
+      new GoalReportStore(serverDB, userId).submit(
+        goalId,
+        { content: '# Stale', metadata },
+        { topicId: oldRun.topicId },
+      ),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
+  /**
    * Regression: the wrap-up node was recognised by its title, so planned work
    * that happened to be called the same was hidden from the coordinator.
    */
