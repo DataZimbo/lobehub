@@ -1,5 +1,6 @@
 import type { DashboardWidgetRunStatus } from '@lobechat/types';
 import debug from 'debug';
+import pMap from 'p-map';
 
 import { DashboardWidgetModel } from '@/database/models/dashboardWidget';
 import type { DashboardWidgetRow, DashboardWidgetVersionRow } from '@/database/schemas';
@@ -12,6 +13,7 @@ const log = debug('lobe-server:dashboard:scheduler');
 
 const DEFAULT_TICK_LIMIT = 50;
 const DEFAULT_INLINE_CONCURRENCY = 4;
+const DEFAULT_DISPATCH_CONCURRENCY = 10;
 
 export interface DashboardTickOptions {
   /**
@@ -86,42 +88,43 @@ export const runDashboardSchedulerTick = async (
     else log('skip widget=%s reason=claimed-elsewhere', widget.id);
   }
 
-  const results: DashboardTickResult['results'] = [];
   let dispatched = 0;
 
   if (options.dispatch) {
-    const settled = await Promise.allSettled(claimed.map((t) => options.dispatch!(t.widget.id)));
-    for (const [i, r] of settled.entries()) {
-      const widgetId = claimed[i].widget.id;
-      if (r.status === 'fulfilled') {
-        dispatched += 1;
-        results.push({ widgetId });
-      } else {
-        console.error('[dashboard:tick] dispatch failed widget=%s', widgetId, r.reason);
-        results.push({ error: String(r.reason), widgetId });
-      }
-    }
+    const dispatch = options.dispatch;
+    const results = await pMap(
+      claimed,
+      async ({ widget }): Promise<DashboardTickResult['results'][number]> => {
+        try {
+          await dispatch(widget.id);
+          dispatched += 1;
+          return { widgetId: widget.id };
+        } catch (error) {
+          console.error('[dashboard:tick] dispatch failed widget=%s', widget.id, error);
+          return { error: String(error), widgetId: widget.id };
+        }
+      },
+      { concurrency: DEFAULT_DISPATCH_CONCURRENCY },
+    );
     return { claimed: claimed.length, dispatched, due: due.length, results };
   }
 
-  const queue = [...claimed];
-  const worker = async () => {
-    for (let target = queue.shift(); target; target = queue.shift()) {
+  const results = await pMap(
+    claimed,
+    async (target): Promise<DashboardTickResult['results'][number]> => {
       try {
         const run = await runScheduledWidget(db, target, deps);
         dispatched += 1;
-        results.push({ status: run?.status, widgetId: target.widget.id });
+        return { status: run?.status, widgetId: target.widget.id };
       } catch (error) {
         console.error('[dashboard:tick] run failed widget=%s', target.widget.id, error);
-        results.push({
+        return {
           error: error instanceof Error ? error.message : String(error),
           widgetId: target.widget.id,
-        });
+        };
       }
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(DEFAULT_INLINE_CONCURRENCY, claimed.length) }, worker),
+    },
+    { concurrency: DEFAULT_INLINE_CONCURRENCY },
   );
 
   return { claimed: claimed.length, dispatched, due: due.length, results };
