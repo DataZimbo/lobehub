@@ -2,16 +2,25 @@ import type {
   BuiltinServerRuntimeOutput,
   BuiltinToolContext,
   BuiltinToolResult,
+  ToolAfterCallContext,
 } from '@lobechat/types';
 import { BaseExecutor } from '@lobechat/types';
 import debug from 'debug';
 
 import { dashboardService } from '@/services/dashboard';
+import { useDashboardStore } from '@/store/dashboard';
 
-import type { DashboardApiNameType } from '../../types';
+import type { AddWidgetToDashboardState, DashboardApiNameType } from '../../types';
 import { DashboardApiName, DashboardIdentifier } from '../../types';
 
 const log = debug('lobe-dashboard:executor');
+
+/** Calls that change a widget the Portal or a board may already show. */
+const WIDGET_MUTATING_APIS = new Set<string>([
+  DashboardApiName.dryRunWidget,
+  DashboardApiName.requestPublish,
+  DashboardApiName.updateWidgetDraft,
+]);
 
 /**
  * Client-runtime executor. Every call runs server-side through
@@ -44,6 +53,29 @@ class DashboardExecutor extends BaseExecutor<typeof DashboardApiName> {
   getWidgetRuns = (params: unknown, ctx?: BuiltinToolContext) =>
     this.run(DashboardApiName.getWidgetRuns, params, ctx);
 
+  /**
+   * The call changed dashboard data outside the dashboard store (server-side,
+   * from either runtime): revalidate what an open Portal or board already shows —
+   * e.g. the widget's "on boards" section after the agent places it.
+   */
+  onAfterCall = async ({ apiName, params, result }: ToolAfterCallContext) => {
+    if (!result.success) return;
+    const widgetId = (params as { widgetId?: unknown } | undefined)?.widgetId;
+    if (typeof widgetId !== 'string') return;
+
+    const store = useDashboardStore.getState();
+    try {
+      if (apiName === DashboardApiName.addWidgetToDashboard) {
+        const state = result.state as Partial<AddWidgetToDashboardState> | undefined;
+        await store.refreshWidgetPlacement(widgetId, state?.dashboardId);
+      } else if (WIDGET_MUTATING_APIS.has(apiName)) {
+        await store.refreshWidget(widgetId);
+      }
+    } catch (error) {
+      log('refresh after %s failed: %o', apiName, error);
+    }
+  };
+
   private run = async (
     apiName: DashboardApiNameType,
     params: unknown,
@@ -57,7 +89,11 @@ class DashboardExecutor extends BaseExecutor<typeof DashboardApiName> {
         operationId: ctx?.operationId,
         topicId: ctx?.topicId ?? undefined,
       });
-      return this.toResult(output);
+      const result = this.toResult(output);
+      // The client runtime never fires `onAfterCall` (only streamed gateway
+      // results do), so sync open views here too.
+      await this.onAfterCall({ apiName, identifier: this.identifier, params, result });
+      return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return {

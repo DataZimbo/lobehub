@@ -226,3 +226,19 @@ describe('addWidgetToDashboard', () => {
     expect(useDashboardStore.getState().widgetAddingIds).toEqual([]);
   });
 });
+
+describe('refreshWidgetPlacement', () => {
+  it('revalidates the widget, the board and every cached board list', async () => {
+    await useDashboardStore.getState().refreshWidgetPlacement('w1', 'd1');
+    expect(mutate).toHaveBeenCalledWith(['dashboard:widget', 'w1']);
+    expect(mutate).toHaveBeenCalledWith(['dashboard:detail', 'd1']);
+
+    const matcher = vi
+      .mocked(mutate)
+      .mock.calls.map(([key]) => key)
+      .find((key) => typeof key === 'function') as (key: unknown) => boolean;
+    expect(matcher(['dashboard:list', 'personal'])).toBe(true);
+    expect(matcher(['dashboard:list', 'project:p'])).toBe(true);
+    expect(matcher(['dashboard:widget', 'w1'])).toBe(false);
+  });
+});

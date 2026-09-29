@@ -24,6 +24,10 @@ const hasRunningWidget = (detail?: DashboardDetail) =>
 const isDashboardDetailKey = (key: unknown) =>
   Array.isArray(key) && key[0] === dashboardKeys.detail.root;
 
+/** SWR matcher over every cached board list, whatever level it lists. */
+const isDashboardListKey = (key: unknown) =>
+  Array.isArray(key) && key[0] === dashboardKeys.list.root;
+
 /**
  * Where a widget's trend comes from: a stat records one point per run into its
  * primary metric; a series appends into one `series:<name>` metric per series.
@@ -345,6 +349,20 @@ export class DashboardActionImpl {
 
   refreshDashboardDetail = async (dashboardId: string) => {
     await mutate(dashboardKeys.detail(dashboardId));
+  };
+
+  /**
+   * The agent placed a widget on a board server-side (possibly a board it just
+   * created): revalidate the widget's board membership, that board (every
+   * cached board when unknown), and every cached board list so open views pick
+   * it up without a reload.
+   */
+  refreshWidgetPlacement = async (widgetId: string, dashboardId?: string) => {
+    await Promise.all([
+      mutate(dashboardKeys.widget(widgetId)),
+      mutate(dashboardId ? dashboardKeys.detail(dashboardId) : isDashboardDetailKey),
+      mutate(isDashboardListKey),
+    ]);
   };
 
   refreshWidget = async (widgetId: string) => {
