@@ -68,17 +68,21 @@ export const DraftRegion = ({ rect }: { rect: Rect }) => (
  */
 export const ClaimCaption = ({
   action,
-  claim,
+  claims,
 }: {
-  action?: ReactNode;
-  claim: VerifyEvidenceChapter;
+  action?: (claim: VerifyEvidenceChapter) => ReactNode;
+  claims: VerifyEvidenceChapter[];
 }) => (
   <div className={styles.caption} onPointerDown={(event) => event.stopPropagation()}>
-    <div className={styles.captionTitle}>
-      <ClaimLabel kind={claim.kind} />
-      {action}
-    </div>
-    <div>{claim.note}</div>
+    {claims.map((claim, index) => (
+      <div key={`${claim.kind}-${index}`} style={{ marginBlockStart: index > 0 ? 8 : 0 }}>
+        <div className={styles.captionTitle}>
+          <ClaimLabel kind={claim.kind} />
+          {action?.(claim)}
+        </div>
+        <div>{claim.note}</div>
+      </div>
+    ))}
   </div>
 );
 

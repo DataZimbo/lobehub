@@ -17,7 +17,7 @@ import {
   VideoLoadError,
 } from './VideoChrome';
 import { VideoClaimList } from './VideoClaimList';
-import { claimAt } from './videoTime';
+import { claimsAt } from './videoTime';
 import { VideoTimeline } from './VideoTimeline';
 
 /** Matches the plain `<video>` this replaces, so rows keep their rhythm. */
@@ -49,7 +49,7 @@ export const VideoEvidencePlayer = memo<VideoEvidencePlayerProps>(
     const [captions, setCaptions] = useState(true);
 
     const timed = notes.flatMap((note) => (note.time ? [{ ...note, time: note.time }] : []));
-    const claim = captions ? claimAt(chapters, time) : undefined;
+    const claims = captions ? claimsAt(chapters, time) : [];
     const aspect = size ? size.width / size.height : 16 / 9;
 
     return (
@@ -87,7 +87,7 @@ export const VideoEvidencePlayer = memo<VideoEvidencePlayerProps>(
                     <Icon icon={Play} size={24} />
                   </div>
                 )}
-                {claim && <ClaimCaption claim={claim} />}
+                {claims.length > 0 && <ClaimCaption claims={claims} />}
               </div>
             )}
             {status === 'error' && (

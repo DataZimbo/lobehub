@@ -134,10 +134,10 @@ export const VideoClaimList = ({ chapters, onSeek }: VideoClaimListProps) => {
         </button>
       )}
       {open &&
-        claims.map((claim) => (
+        claims.map((claim, index) => (
           <button
             className={styles.claim}
-            key={`${claim.kind}-${claim.t}`}
+            key={`${claim.kind}-${claim.t}-${index}`}
             type={'button'}
             onClick={() => onSeek(claim.t)}
           >

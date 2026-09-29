@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { VideoClock } from './useVideoClock';
-import { handlePlaybackKey } from './VideoChrome';
+import { ClaimCaption, handlePlaybackKey } from './VideoChrome';
 import { VideoTimeline } from './VideoTimeline';
 
 const clock = () =>
@@ -59,5 +59,29 @@ describe('VideoTimeline markers', () => {
     expect(onClaimClick).toHaveBeenCalledWith(expect.objectContaining({ t: 7.9 }));
     expect(onNoteClick).toHaveBeenCalledWith(expect.objectContaining({ start: 7.2 }));
     expect(onSeek).not.toHaveBeenCalled();
+  });
+});
+
+describe('ClaimCaption', () => {
+  it('gives each claim on the frame its own action', () => {
+    const onDispute = vi.fn();
+    render(
+      <ClaimCaption
+        action={(claim) => (
+          <button type={'button'} onClick={() => onDispute(claim.note)}>
+            {`dispute ${claim.note}`}
+          </button>
+        )}
+        claims={[
+          { kind: 'check', note: 'no skeleton', t: 7.9 },
+          { kind: 'check', note: 'first question in place', t: 7.9 },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'dispute first question in place' }));
+
+    expect(onDispute).toHaveBeenCalledWith('first question in place');
+    expect(screen.getByText('no skeleton')).toBeTruthy();
   });
 });

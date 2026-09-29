@@ -22,7 +22,7 @@ import {
   VideoControlBar,
   VideoLoadError,
 } from './VideoChrome';
-import { claimAt, disputesClaim, formatVideoTime, frameOf } from './videoTime';
+import { claimsAt, disputesClaim, formatVideoTime, frameOf } from './videoTime';
 import { VideoTimeline } from './VideoTimeline';
 
 type Rect = AcceptanceReviewAnnotation['rect'];
@@ -253,8 +253,7 @@ export const VideoReviewStage = memo<VideoReviewStageProps>(
       element.addEventListener('pointerup', up);
     };
 
-    const claim = claimAt(chapters, time);
-    const disputed = claim ? notes.some((note) => disputesClaim(note.disputes, claim)) : false;
+    const claims = claimsAt(chapters, time);
     const timed = notes.filter((note) => note.time);
     const aspect = size ? size.width / size.height : 16 / 9;
 
@@ -295,28 +294,31 @@ export const VideoReviewStage = memo<VideoReviewStageProps>(
                   />
                   {draft && <DraftRegion rect={draft} />}
                   {hint && <div className={styles.hint}>{hint}</div>}
-                  {claim && !draft && (
+                  {claims.length > 0 && !draft && (
                     <ClaimCaption
-                      claim={claim}
-                      action={
-                        <button
-                          className={styles.dispute}
-                          disabled={disputed}
-                          type={'button'}
-                          onClick={() => {
-                            controls.pause();
-                            controls.seek(claim.t);
-                            onAddNote({
-                              disputes: { kind: claim.kind, note: claim.note, t: claim.t },
-                              time: { start: claim.t },
-                            });
-                          }}
-                        >
-                          {disputed
-                            ? t('acceptance.video.disputed')
-                            : t('acceptance.video.dispute')}
-                        </button>
-                      }
+                      claims={claims}
+                      action={(claim) => {
+                        const disputed = notes.some((note) => disputesClaim(note.disputes, claim));
+                        return (
+                          <button
+                            className={styles.dispute}
+                            disabled={disputed}
+                            type={'button'}
+                            onClick={() => {
+                              controls.pause();
+                              controls.seek(claim.t);
+                              onAddNote({
+                                disputes: { kind: claim.kind, note: claim.note, t: claim.t },
+                                time: { start: claim.t },
+                              });
+                            }}
+                          >
+                            {disputed
+                              ? t('acceptance.video.disputed')
+                              : t('acceptance.video.dispute')}
+                          </button>
+                        );
+                      }}
                     />
                   )}
                 </div>

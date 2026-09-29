@@ -227,11 +227,11 @@ export const VideoTimeline = ({
             />
           ))}
         <div className={styles.head} style={{ left: pct(time) }} />
-        {claimsOf(chapters).map((claim) => (
+        {claimsOf(chapters).map((claim, index) => (
           <button
             aria-label={`${t(`acceptance.video.claim.${claim.kind}`)} ${formatVideoTime(claim.t)}: ${claim.note}`}
             className={styles.claimMark}
-            key={`claim-${claim.kind}-${claim.t}`}
+            key={`claim-${claim.kind}-${claim.t}-${index}`}
             style={{ background: CLAIM_COLOR[claim.kind], left: pct(claim.t) }}
             type={'button'}
             // The press must not also scrub the track; the click (pointer, Enter

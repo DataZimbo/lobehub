@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   claimAt,
+  claimsAt,
   disputesClaim,
   formatVideoClock,
   formatVideoTime,
@@ -64,5 +65,23 @@ describe('disputesClaim', () => {
     expect(disputesClaim(first, first)).toBe(true);
     expect(disputesClaim(first, second)).toBe(false);
     expect(disputesClaim(undefined, first)).toBe(false);
+  });
+});
+
+describe('claimsAt', () => {
+  // The caption is where claims are disputed; one hiding another could never be.
+  it('captions every claim that shares the frame, not just the last one', () => {
+    const sameFrame = [
+      { kind: 'check' as const, note: 'no skeleton', t: 7.9 },
+      { kind: 'check' as const, note: 'first question in place', t: 7.9 },
+      { kind: 'flag' as const, note: 'count 0 → 1', t: 7 },
+    ];
+
+    expect(claimsAt(sameFrame, 8).map((claim) => claim.note)).toEqual([
+      'no skeleton',
+      'first question in place',
+    ]);
+    expect(claimsAt(sameFrame, 7.2).map((claim) => claim.note)).toEqual(['count 0 → 1']);
+    expect(claimsAt(sameFrame, 12)).toEqual([]);
   });
 });

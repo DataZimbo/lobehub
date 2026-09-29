@@ -59,9 +59,25 @@ export const stepAt = (chapters: VerifyEvidenceChapter[], time: number) =>
 
 /** The claim to caption at this time: from its frame until it has been read. */
 export const claimAt = (chapters: VerifyEvidenceChapter[], time: number) =>
-  claimsOf(chapters).findLast(
-    (chapter) => time >= chapter.t - 0.5 / VIDEO_FPS && time < chapter.t + CLAIM_CAPTION_SECONDS,
-  );
+  claimsOf(chapters)
+    .filter(
+      (chapter) => time >= chapter.t - 0.5 / VIDEO_FPS && time < chapter.t + CLAIM_CAPTION_SECONDS,
+    )
+    // The most recent claim wins, whatever order the chapters arrived in.
+    .reduce<VerifyEvidenceChapter | undefined>(
+      (latest, chapter) => (!latest || chapter.t >= latest.t ? chapter : latest),
+      undefined,
+    );
+
+/**
+ * Every claim on the frame being captioned. Two claims can share a frame; the
+ * caption is where each one is read and disputed, so none may hide behind
+ * another.
+ */
+export const claimsAt = (chapters: VerifyEvidenceChapter[], time: number) => {
+  const latest = claimAt(chapters, time);
+  return latest ? claimsOf(chapters).filter((chapter) => chapter.t === latest.t) : [];
+};
 
 /**
  * Whether a region drawn on the frame at `start` belongs on screen. Paused, it
