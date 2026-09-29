@@ -1512,7 +1512,6 @@ describe('AgentRuntimeService', () => {
           }),
         }),
         undefined,
-        { ownerUserId: 'test-user-id' },
       );
 
       dispatchSpy.mockRestore();
@@ -1548,7 +1547,6 @@ describe('AgentRuntimeService', () => {
           }),
         }),
         undefined,
-        { ownerUserId: 'test-user-id' },
       );
 
       dispatchSpy.mockRestore();
@@ -2129,7 +2127,6 @@ describe('AgentRuntimeService', () => {
           ],
         }),
         undefined,
-        { ownerUserId: 'test-user-id' },
       );
 
       dispatchSpy.mockRestore();
@@ -2195,7 +2192,6 @@ describe('AgentRuntimeService', () => {
           ],
         }),
         undefined,
-        { ownerUserId: 'test-user-id' },
       );
 
       dispatchSpy.mockRestore();
@@ -2241,7 +2237,6 @@ describe('AgentRuntimeService', () => {
           ],
         }),
         undefined,
-        { ownerUserId: 'test-user-id' },
       );
 
       dispatchSpy.mockRestore();

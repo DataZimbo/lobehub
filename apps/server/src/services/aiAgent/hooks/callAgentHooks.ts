@@ -1,4 +1,3 @@
-import { resolveHookUserId } from '@lobechat/agent-runtime';
 import type { SerializedAgentHook } from '@lobechat/types';
 
 import type { AgentRuntimeService } from '@/server/services/agentRuntime';
@@ -58,14 +57,12 @@ export async function withCallAgentHooks<T extends CallAgentStartResult>(
   const { parentOperationId } = context;
   if (!parentOperationId) return start();
 
-  let hookUserId = context.userId;
   let serializedHooks: SerializedAgentHook[] | undefined;
   try {
     // This public loader reads the authoritative state through the coordinator
     // in both local and queue modes. No parent process registration is needed.
     const state = await runtime.loadInterventionContinuationState(parentOperationId);
     serializedHooks = state?.host?.hooks;
-    hookUserId = resolveHookUserId(context.userId, state?.principal?.actor?.shareVisitor);
   } catch (error) {
     console.error('[CallAgentHooks] Failed to load parent hooks', error);
   }
@@ -81,13 +78,11 @@ export async function withCallAgentHooks<T extends CallAgentStartResult>(
       parentOperationId,
       threadId: context.threadId,
       topicId: context.topicId,
-      userId: hookUserId,
+      userId: context.userId,
       ...fields,
     };
     try {
-      await hookDispatcher.dispatch(parentOperationId, type, event, serializedHooks, {
-        ownerUserId: context.userId,
-      });
+      await hookDispatcher.dispatch(parentOperationId, type, event, serializedHooks);
     } catch (error) {
       // These three hooks are notifications. Delivery must never replace a
       // startup result/error or cause a second child launch on queue retry.

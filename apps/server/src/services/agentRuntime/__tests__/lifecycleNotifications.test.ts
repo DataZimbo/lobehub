@@ -195,7 +195,7 @@ afterEach(() => {
 
 describe('lifecycle notifications from executeStep', () => {
   it.each([false, true])(
-    'uses the trigger identity in all four events, preserving owner state (queue=%s)',
+    'uses the runtime identity in all four events despite visitor state (queue=%s)',
     async (queue) => {
       vi.mocked(isQueueAgentRuntimeEnabled).mockReturnValue(queue);
       // Historical persisted state is normalized by the same loader contract as local/queue workers.
@@ -217,8 +217,8 @@ describe('lifecycle notifications from executeStep', () => {
       await execute(service);
       expect(httpEvents().map((event) => event.hookType)).toEqual(events);
       for (const event of httpEvents()) {
-        expect(event.userId).toBe('visitor-1');
-        expect(event.userEmail).toBe('visitor-1@example.test');
+        expect(event.userId).toBe('user-1');
+        expect(event.userEmail).toBe('user-1@example.test');
         expect(event).not.toHaveProperty('actorUserId');
         expect(event).not.toHaveProperty('ownerUserId');
       }
@@ -226,9 +226,8 @@ describe('lifecycle notifications from executeStep', () => {
         expect(dispatch).toHaveBeenCalledWith(
           operationId,
           type,
-          expect.objectContaining({ userId: 'visitor-1' }),
+          expect.objectContaining({ userId: 'user-1' }),
           expect.any(Array),
-          { ownerUserId: 'user-1' },
         );
       }
       expect(writes.length).toBeGreaterThan(0);
@@ -264,9 +263,8 @@ describe('lifecycle notifications from executeStep', () => {
         expect(dispatch).toHaveBeenCalledWith(
           runOperationId,
           type,
-          expect.objectContaining({ userId: `visitor-${ownerUserId}` }),
+          expect.objectContaining({ userId: ownerUserId }),
           expect.any(Array),
-          { ownerUserId },
         );
       }
     }
@@ -388,7 +386,7 @@ describe('lifecycle notifications from executeStep', () => {
     });
   });
 
-  it('keeps the trusted owner on an internal QStash callback while external events identify the visitor', async () => {
+  it('keeps the trusted owner on an internal QStash callback and external events keep the runtime identity', async () => {
     vi.stubEnv('APP_URL', 'https://app.example.test');
     vi.mocked(isQueueAgentRuntimeEnabled).mockReturnValue(true);
     vi.stubEnv('QSTASH_TOKEN', 'test-token');
@@ -416,7 +414,7 @@ describe('lifecycle notifications from executeStep', () => {
     await execute(service);
     expect(
       httpEvents().every(
-        (event) => event.userId === 'visitor-1' && event.userEmail === 'visitor-1@example.test',
+        (event) => event.userId === 'user-1' && event.userEmail === 'user-1@example.test',
       ),
     ).toBe(true);
     expect(publish).toHaveBeenCalledOnce();
@@ -474,7 +472,7 @@ describe('lifecycle notifications from executeStep', () => {
     const { service } = setup(state);
     await execute(service);
     expect(captured).toHaveLength(3);
-    expect(captured.every((event) => event.userId === 'visitor-1')).toBe(true);
+    expect(captured.every((event) => event.userId === 'user-1')).toBe(true);
     expect(captured.every((event) => event.finalState?.origin?.userId === 'user-1')).toBe(true);
     expect(captured[1].totalToolCalls).toBe(1);
     expect(captured[2].totalToolCalls).toBe(1);
@@ -623,7 +621,7 @@ describe('lifecycle notifications from executeStep', () => {
       expect(httpEvents()[2]).toMatchObject({
         operationId,
         ...origin,
-        userId: 'visitor-1',
+        userId: 'user-1',
         errorDetail: firstError,
       });
 

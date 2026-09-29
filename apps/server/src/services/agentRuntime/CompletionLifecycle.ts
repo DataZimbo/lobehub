@@ -987,9 +987,7 @@ export class CompletionLifecycle {
         }
       }
 
-      await hookDispatcher.dispatch(operationId, 'onComplete', event, state?.host?.hooks, {
-        ownerUserId: this.userId,
-      });
+      await hookDispatcher.dispatch(operationId, 'onComplete', event, state?.host?.hooks);
 
       // Recall the user when a run finishes with a deliverable while they may be
       // away (push / inbox). Fires on every success-like terminal — `done` plus
@@ -1095,9 +1093,7 @@ export class CompletionLifecycle {
       }
 
       if (reason === 'error') {
-        await hookDispatcher.dispatch(operationId, 'onError', event, state?.host?.hooks, {
-          ownerUserId: this.userId,
-        });
+        await hookDispatcher.dispatch(operationId, 'onError', event, state?.host?.hooks);
 
         const assistantMessageId = metadata?.assistantMessageId;
         if (assistantMessageId && state?.error && !options?.skipErrorMessageWrite) {

@@ -255,7 +255,6 @@ describe('AgentRuntimeService.executeStep - early exit on terminal state', () =>
         reason: 'interrupted',
       }),
       undefined,
-      { ownerUserId: 'user-1' },
     );
 
     dispatchSpy.mockRestore();
@@ -287,7 +286,6 @@ describe('AgentRuntimeService.executeStep - early exit on terminal state', () =>
         reason: 'done',
       }),
       undefined,
-      { ownerUserId: 'user-1' },
     );
 
     dispatchSpy.mockRestore();
@@ -666,7 +664,6 @@ describe('AgentRuntimeService.executeStep - durable Review lifecycle retry', () 
       'onComplete',
       expect.objectContaining({ reason: 'waiting_for_human' }),
       [],
-      { ownerUserId: 'user-1' },
     );
     expect(finalizeTrace).toHaveBeenCalledTimes(1);
     expect(finalizeTrace).toHaveBeenCalledWith(
@@ -1154,7 +1151,6 @@ describe('AgentRuntimeService.executeStep - Redis failure in error handler', () 
         reason: 'error',
       }),
       undefined,
-      { ownerUserId: 'user-1' },
     );
 
     dispatchSpy.mockRestore();
@@ -1211,7 +1207,6 @@ describe('AgentRuntimeService.executeStep - Redis failure in error handler', () 
         reason: 'error',
       }),
       undefined,
-      { ownerUserId: 'user-1' },
     );
 
     dispatchSpy.mockRestore();
@@ -1377,7 +1372,6 @@ describe('AgentRuntimeService.executeStep - Redis failure in error handler', () 
         }),
       }),
       expect.anything(),
-      { ownerUserId: 'user-1' },
     );
 
     dispatchSpy.mockRestore();

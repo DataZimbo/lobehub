@@ -377,7 +377,7 @@ describe('AiAgentService.execAgent - resumeApproval', () => {
     expect(created.hooks).toEqual(hooks);
     expect(
       created.interventionHookEvents.every(
-        (event: { userId: string }) => event.userId === 'visitor-1',
+        (event: { userId: string }) => event.userId === 'user-1',
       ),
     ).toBe(true);
     expect(created.interventionHookEvents).toEqual([
@@ -1654,9 +1654,8 @@ describe('AiAgentService.stopPendingApproval', () => {
       expect(dispatch).toHaveBeenCalledWith(
         'op-parked-1',
         'onStopByHumanIntervention',
-        expect.objectContaining({ userId: 'visitor-1' }),
+        expect.objectContaining({ userId: 'user-1' }),
         expect.any(Array),
-        { ownerUserId: 'user-1' },
       );
       dispatch.mockRestore();
       const delivered = hookFetch.mock.calls.length;

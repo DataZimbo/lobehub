@@ -6159,14 +6159,12 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
             'op-123',
             identity,
             undefined,
-            { ownerUserId: 'user-123' },
           );
           expect(mockDispatcher.dispatch).toHaveBeenCalledWith(
             'op-123',
             throws ? 'onToolCallError' : 'afterToolCall',
             identity,
             undefined,
-            { ownerUserId: 'user-123' },
           );
         },
       );
@@ -6239,7 +6237,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           'op-123',
           expect.objectContaining(identity),
           undefined,
-          { ownerUserId: 'user-123' },
         );
         expect(mockDispatcher.dispatch).toHaveBeenCalledWith(
           'op-123',
@@ -6253,7 +6250,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
             success: true,
           }),
           undefined,
-          { ownerUserId: 'user-123' },
         );
       });
 
@@ -6289,7 +6285,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
             toolCallId: 'tc-1',
           }),
           undefined,
-          { ownerUserId: 'user-123' },
         );
         expect(
           mockDispatcher.dispatch.mock.calls.some(([, type]) => type === 'onToolCallError'),
@@ -6384,7 +6379,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
             toolSource: 'mcp',
           }),
           undefined,
-          { ownerUserId: 'user-123' },
         );
       });
 
@@ -6411,7 +6405,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
             identifier: 'twitter',
           }),
           undefined,
-          { ownerUserId: 'user-123' },
         );
 
         // afterToolCall dispatched via dispatch()
@@ -6425,7 +6418,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
             success: true,
           }),
           undefined,
-          { ownerUserId: 'user-123' },
         );
       });
 
@@ -6529,7 +6521,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           'afterToolCall',
           expect.objectContaining({ mocked: true, success: true }),
           undefined,
-          { ownerUserId: 'user-123' },
         );
 
         // Tool message should be persisted with mock content
@@ -6578,7 +6569,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
             toolCallId: 'tc-1',
           }),
           undefined,
-          { ownerUserId: 'user-123' },
         );
       });
 
@@ -6611,7 +6601,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
             toolCallId: 'tc-1',
           }),
           undefined,
-          { ownerUserId: 'user-123' },
         );
       });
 
@@ -6636,7 +6625,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           'op-123',
           expect.objectContaining({ callIndex: 1 }),
           undefined,
-          { ownerUserId: 'user-123' },
         );
 
         // Second call: state reflects 1 prior call → callIndex = 2
@@ -6656,7 +6644,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           'op-123',
           expect.objectContaining({ callIndex: 2 }),
           undefined,
-          { ownerUserId: 'user-123' },
         );
       });
 
@@ -6707,14 +6694,13 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           'beforeCompact',
           expect.objectContaining({ tokenCount: 5000 }),
           undefined,
-          { ownerUserId: 'user-123' },
         );
       });
     });
 
     describe('request_human_approve hooks', () => {
       it.each(['user-123', undefined])(
-        'dispatches beforeHumanIntervention with explicit owner %s',
+        'keeps beforeHumanIntervention on runtime user %s despite visitor state',
         async (ownerUserId) => {
           humanHookFetch.mockReset().mockResolvedValue(new Response('{}'));
           const mockDispatcher = new HookDispatcher();
@@ -6730,11 +6716,13 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           const state = createToolState({
             messages: [{ content: '', id: 'asst-1', role: 'assistant' }],
             host: {
-              hooks: ['user-123', 'visitor-1'].map((userId) => ({
-                id: userId,
-                type: 'beforeHumanIntervention' as const,
-                webhook: { url: 'https://hooks.example/human', body: { userId } },
-              })),
+              hooks: [
+                {
+                  id: 'human',
+                  type: 'beforeHumanIntervention' as const,
+                  webhook: { url: 'https://hooks.example/human' },
+                },
+              ],
             },
             status: 'running',
             principal: {
@@ -6780,7 +6768,7 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
             'op-123',
             'beforeHumanIntervention',
             expect.objectContaining({
-              userId: 'visitor-1',
+              userId: ownerUserId,
               pendingTools: [
                 {
                   apiName: 'post_tweet',
@@ -6792,16 +6780,11 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
               ],
             }),
             state.host?.hooks,
-            ownerUserId === undefined ? undefined : { ownerUserId },
           );
           await dispatch.mock.results[0].value;
           const payloads = humanHookFetch.mock.calls.map(([, request]) => JSON.parse(request.body));
-          expect(payloads).toHaveLength(2);
-          expect(payloads[1]).toMatchObject({
-            userId: 'visitor-1',
-            userEmail: 'visitor-1@example.test',
-          });
-          expect(payloads[0].userId).toBe('user-123');
+          expect(payloads).toHaveLength(1);
+          expect(payloads[0].userId).toBe(ownerUserId);
           if (ownerUserId === undefined) expect(payloads[0]).not.toHaveProperty('userEmail');
           else expect(payloads[0].userEmail).toBe('user-123@example.test');
           dispatch.mockRestore();

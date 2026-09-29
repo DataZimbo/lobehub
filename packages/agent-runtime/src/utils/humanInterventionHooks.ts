@@ -10,11 +10,10 @@ import type {
   HumanInterventionHookContext,
   StopByHumanInterventionHookEvent,
 } from '../types';
-import { resolveHookUserId } from './resolveHookUserId';
 
 /** Callers supply the actual operation; continuation source ids are not parent ids. */
 export const buildHumanInterventionHookContext = (
-  state: Pick<AgentState, 'origin' | 'principal'>,
+  state: Pick<AgentState, 'origin'>,
   operation: Pick<RuntimeOperationContext, 'operationId' | 'userId'>,
 ): HumanInterventionHookContext => {
   const { origin } = state;
@@ -29,10 +28,7 @@ export const buildHumanInterventionHookContext = (
     taskId: origin?.taskId,
     threadId: origin?.threadId,
     topicId: origin?.topicId,
-    userId: resolveHookUserId(
-      operation.userId ?? origin?.userId,
-      state.principal?.actor?.shareVisitor,
-    ),
+    userId: operation.userId ?? origin?.userId,
     workspaceId: origin?.workspaceId,
   };
 };

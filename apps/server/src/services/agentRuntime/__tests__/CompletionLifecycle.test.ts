@@ -863,9 +863,7 @@ describe('CompletionLifecycle.dispatchHooks — async-tool park', () => {
     const doneState = { host: { hooks: [] }, origin: { agentId: 'a' }, status: 'done' };
     await lifecycle.dispatchHooks('op-1', doneState, 'done');
 
-    expect(dispatchSpy).toHaveBeenCalledWith('op-1', 'onComplete', expect.anything(), [], {
-      ownerUserId: 'user-1',
-    });
+    expect(dispatchSpy).toHaveBeenCalledWith('op-1', 'onComplete', expect.anything(), []);
     expect(unregisterSpy).toHaveBeenCalledWith('op-1');
   });
 });
@@ -1068,7 +1066,6 @@ describe('CompletionLifecycle.dispatchHooks — completion notification', () => 
       'onComplete',
       expect.anything(),
       [],
-      { ownerUserId: 'user-1' },
     );
     expect(hookDispatcher.unregister).toHaveBeenCalledWith('op-1');
   });
@@ -1365,7 +1362,6 @@ describe('CompletionLifecycle.dispatchHooks — lastAssistantContent DB recovery
       'onComplete',
       expect.objectContaining({ lastAssistantContent: 'the real reply' }),
       [],
-      { ownerUserId: 'user-1' },
     );
   });
 
@@ -1387,7 +1383,6 @@ describe('CompletionLifecycle.dispatchHooks — lastAssistantContent DB recovery
         lastAssistantContent: content,
       }),
       [],
-      { ownerUserId: 'user-1' },
     );
   });
 
@@ -1428,7 +1423,6 @@ describe('CompletionLifecycle.dispatchHooks — lastAssistantContent DB recovery
       'onComplete',
       expect.objectContaining({ lastAssistantContent: 'the grouped reply from DB' }),
       [],
-      { ownerUserId: 'user-1' },
     );
   });
 
@@ -1446,7 +1440,6 @@ describe('CompletionLifecycle.dispatchHooks — lastAssistantContent DB recovery
       'onComplete',
       expect.objectContaining({ lastAssistantContent: 'state reply' }),
       [],
-      { ownerUserId: 'user-1' },
     );
   });
 
@@ -1476,7 +1469,6 @@ describe('CompletionLifecycle.dispatchHooks — lastAssistantContent DB recovery
       'onComplete',
       expect.objectContaining({ lastAssistantContent: 'final step reply' }),
       [],
-      { ownerUserId: 'user-1' },
     );
   });
 
@@ -1501,7 +1493,6 @@ describe('CompletionLifecycle.dispatchHooks — lastAssistantContent DB recovery
       'onComplete',
       expect.objectContaining({ lastAssistantContent: '图里是一只猫' }),
       [],
-      { ownerUserId: 'user-1' },
     );
   });
 
@@ -1521,7 +1512,6 @@ describe('CompletionLifecycle.dispatchHooks — lastAssistantContent DB recovery
       'onComplete',
       expect.objectContaining({ lastAssistantContent: jsonLookalike }),
       [],
-      { ownerUserId: 'user-1' },
     );
   });
 
@@ -1543,7 +1533,6 @@ describe('CompletionLifecycle.dispatchHooks — lastAssistantContent DB recovery
       'onComplete',
       expect.objectContaining({ lastAssistantContent: undefined }),
       [],
-      { ownerUserId: 'user-1' },
     );
   });
 
@@ -1560,7 +1549,6 @@ describe('CompletionLifecycle.dispatchHooks — lastAssistantContent DB recovery
       'onComplete',
       expect.objectContaining({ lastAssistantContent: undefined }),
       [],
-      { ownerUserId: 'user-1' },
     );
   });
 
@@ -1577,7 +1565,6 @@ describe('CompletionLifecycle.dispatchHooks — lastAssistantContent DB recovery
       'onComplete',
       expect.objectContaining({ lastAssistantContent: undefined }),
       [],
-      { ownerUserId: 'user-1' },
     );
   });
 

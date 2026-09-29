@@ -507,9 +507,8 @@ describe('durable approval resolution notifications', () => {
       expect(dispatch).toHaveBeenCalledWith(
         'continuation',
         'afterHumanIntervention',
-        expect.objectContaining({ userId: 'visitor-1', operationId: 'source' }),
+        expect.objectContaining({ userId: 'user-1', operationId: 'source' }),
         stored.host.hooks,
-        { ownerUserId: 'user-1' },
       );
       expect(stored.origin.userId).toBe('user-1');
       expect(stored.host.interventionHookEvents).toEqual([]);

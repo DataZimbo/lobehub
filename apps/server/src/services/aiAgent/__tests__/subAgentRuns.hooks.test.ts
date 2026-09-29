@@ -100,7 +100,7 @@ describe('sub-agent call notifications', () => {
   });
 
   it.each(['isolated', 'member'] as const)(
-    'uses the trusted parent trigger for %s startup success and failure without changing the child account',
+    'uses the parent runtime account despite visitor state for %s startup success and failure',
     async (kind) => {
       const parent = {
         origin: { userId: 'user' },
@@ -134,9 +134,8 @@ describe('sub-agent call notifications', () => {
         expect(dispatch).toHaveBeenCalledWith(
           'parent-operation',
           type,
-          expect.objectContaining({ userId: 'visitor-1' }),
+          expect.objectContaining({ userId: 'user' }),
           parent.host.hooks,
-          { ownerUserId: 'user' },
         );
       }
       expect(deps.userId).toBe('user');
@@ -286,7 +285,7 @@ describe('sub-agent call notifications', () => {
       .mockResolvedValueOnce(null);
     await invoke('isolated');
     await invoke('isolated');
-    expect(users).toEqual(['visitor-1', 'visitor-1', 'user', 'user']);
+    expect(users).toEqual(['user', 'user', 'user', 'user']);
   });
 
   it('does not load or dispatch parent hooks when there is no parent operation', async () => {

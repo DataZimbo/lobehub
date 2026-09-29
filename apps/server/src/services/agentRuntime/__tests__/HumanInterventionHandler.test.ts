@@ -26,7 +26,7 @@ const buildHandler = (
   messageModel: { updateMessagePlugin: any; updateToolMessage: any },
 ) => {
   const serverDB = { query: { messagePlugins: { findFirst: pluginQuery } } } as any;
-  return new HumanInterventionHandler(serverDB, messageModel as any, 'user-1');
+  return new HumanInterventionHandler(serverDB, messageModel as any);
 };
 
 describe('HumanInterventionHandler.process', () => {
@@ -131,9 +131,8 @@ describe('HumanInterventionHandler.process', () => {
       expect(dispatch).toHaveBeenCalledWith(
         'restored-operation',
         hookType,
-        expect.objectContaining({ userId: 'visitor-1' }),
+        expect.objectContaining({ userId: 'user-1' }),
         state.host.hooks,
-        { ownerUserId: 'user-1' },
       );
       expect(result.newState.origin.userId).toBe('user-1');
       expect(result.newState.host.hooks).toEqual(state.host.hooks);
@@ -208,7 +207,6 @@ describe('HumanInterventionHandler.process', () => {
           ...(action !== 'approve' && { rejectionReason: 'privacy concern' }),
         }),
         hooks,
-        { ownerUserId: 'user-1' },
       );
       expect(result.newState.host.hooks).toEqual(hooks);
       expect(result.newState.status).toBe(

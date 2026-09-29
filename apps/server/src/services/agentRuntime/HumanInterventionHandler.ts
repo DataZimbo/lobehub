@@ -47,7 +47,6 @@ export class HumanInterventionHandler {
   constructor(
     private readonly serverDB: LobeChatDatabase,
     private readonly messageModel: MessageModel,
-    private readonly userId: string,
   ) {}
 
   async process(state: any, intervention: InterventionInput): Promise<InterventionResult> {
@@ -117,7 +116,6 @@ export class HumanInterventionHandler {
           },
         ),
         state.host?.hooks,
-        { ownerUserId: this.userId },
       )
       .catch(() => {});
 
@@ -206,7 +204,6 @@ export class HumanInterventionHandler {
           },
         ),
         state.host?.hooks,
-        { ownerUserId: this.userId },
       )
       .catch(() => {});
 
@@ -250,7 +247,6 @@ export class HumanInterventionHandler {
           },
         ),
         state.host?.hooks,
-        { ownerUserId: this.userId },
       )
       .catch(() => {});
 

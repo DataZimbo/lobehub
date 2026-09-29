@@ -19,26 +19,23 @@ called once; the first mock wins. Legacy dual handler/webhook hooks select the
 handler locally and the webhook in queue mode. Critical notification callbacks
 retain `fallback: 'none'` failure propagation.
 
-## Hook trigger identity
+## Hook runtime identity
 
-All 16 hook events identify the session trigger in `userId`: the trusted
-`state.principal.actor.shareVisitor.visitorUserId`, when present, otherwise the
-producer's existing run user. `resolveHookUserId` from `@lobechat/agent-runtime`
-applies this nullish fallback. Tool arguments, HTTP request fields and message
-content are not identity sources; no `actorUserId` field is added.
+Step/terminal, human, compact and parent call-agent notifications use the
+producer's trusted runtime account in `userId`. Share visitor state does not
+override these thirteen event identities. Permissions, service/model
+accounts and persisted ownership retain their existing runtime owner semantics.
+Internal callback owner closures and server-created static routing context remain
+unchanged; no public owner or actor field is added.
 
-This projection changes event payloads only. Run origins, service/model accounts,
-authorization and persisted ownership continue to use the owner. Internal local
-callbacks retain their trusted owner closures; internal QStash callbacks retain
-their server-created static owner context or reload operation metadata. Consumers
-must not treat an external event's `userId` as an account authorization.
+Durable human continuations deliver with the resumed service's runtime account,
+including historical ledger events that contain the former visitor identity.
+Parent call-agent notifications use the parent caller's runtime account.
+The share entry point still forces headless approval and blocks sub-agent calls.
 
-Parent call-agent notifications use the loaded parent's share context. Human
-resolution events are stamped from the validated source state and persisted with
-the continuation; the worker also projects older saved owner identities using its
-trusted share context. State readers retain their existing legacy normalization.
-The share entry point still forces headless approval and blocks sub-agent
-dispatch; this identity change does not make those paths available to visitors.
+This is a staged migration: the three tool notification identities and shared
+email authorization interfaces still follow the inherited contract. The shared
+identity helper remains until the upstream tool builder stops referencing it.
 
 ## Preparation and persistence
 

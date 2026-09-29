@@ -427,7 +427,6 @@ export class InterventionController {
           },
         ),
         sourceState.host?.hooks,
-        { ownerUserId: this.deps.userId },
       );
       const consumed = await this.deps.agentOperationModel.completeStopHookNotification(
         operationId,

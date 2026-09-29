@@ -136,7 +136,7 @@ describe('requestHumanApprove', () => {
       const notification = vi.mocked(host.lifecycle!.dispatch).mock.calls[0][0];
       expect(notification).toMatchObject({
         event: {
-          userId: 'visitor-1',
+          userId: 'owner',
           agentId: 'agent-origin',
           assistantMessageId: 'assistant-current',
           operationId: 'op-1',

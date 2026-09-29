@@ -15,7 +15,6 @@ import {
   findInMessages,
   GeneralChatAgent,
   isParkedStatus,
-  resolveHookUserId,
 } from '@lobechat/agent-runtime';
 import type { ISnapshotStore } from '@lobechat/agent-tracing';
 import { appendSubAgentReference, isCallSubAgentCall } from '@lobechat/builtin-tool-lobe-agent';
@@ -610,7 +609,7 @@ export class AgentRuntimeService {
     this.completionLifecycle = new CompletionLifecycle(db, userId, workspaceId, {
       includeShareVisitor,
     });
-    this.humanIntervention = new HumanInterventionHandler(db, this.messageModel, this.userId);
+    this.humanIntervention = new HumanInterventionHandler(db, this.messageModel);
 
     // Initialize ToolExecutionService with dependencies
     const builtinToolsExecutor = new BuiltinToolsExecutor(db, userId);
@@ -1821,15 +1820,11 @@ export class AgentRuntimeService {
             'afterHumanIntervention',
             {
               ...event,
-              // The persisted event was built from the trusted source operation.
-              // Re-project legacy owner ids when the resumed state's share context exists.
-              userId: resolveHookUserId(
-                event.userId ?? agentState.origin?.userId ?? this.userId,
-                agentState.principal?.actor?.shareVisitor,
-              ),
+              // Historical continuation events may contain the former visitor identity.
+              // Delivery always belongs to this resumed operation's runtime account.
+              userId: this.userId,
             },
             agentState.host.hooks,
-            { ownerUserId: this.userId },
           );
           await this.coordinator.saveAgentState(operationId, {
             ...agentState,
@@ -2040,7 +2035,6 @@ export class AgentRuntimeService {
               steps: agentState?.stepCount || 0,
             },
             agentState?.host?.hooks,
-            { ownerUserId: this.userId },
           );
         } catch (hookError) {
           log('[%s] beforeStep hook dispatch error: %O', operationId, hookError);
@@ -2554,7 +2548,6 @@ export class AgentRuntimeService {
               totalToolCalls: stepResult.newState?.usage?.tools?.totalCalls ?? 0,
             },
             stepResult.newState?.host?.hooks,
-            { ownerUserId: this.userId },
           );
         } catch (hookError) {
           log('[%s] afterStep hook dispatch error: %O', operationId, hookError);
