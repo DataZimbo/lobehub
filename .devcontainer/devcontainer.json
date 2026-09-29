@@ -1,9 +1,14 @@
 {
+  "image": "mcr.microsoft.com/devcontainers/typescript-node",
   "features": {
     "ghcr.io/devcontainer-community/devcontainer-features/bun.sh:1": {},
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
       "moby": false
+    },
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "version": "latest"
     }
   },
-  "image": "mcr.microsoft.com/devcontainers/typescript-node"
+  "postCreateCommand": "pnpm install",
+  "forwardPorts": [3010, 9876]
 }
