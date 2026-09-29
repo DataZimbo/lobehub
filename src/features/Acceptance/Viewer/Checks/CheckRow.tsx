@@ -51,7 +51,7 @@ import { openCheckRejectModal } from '../Review/CheckRejectModal';
 import type { CheckProposal } from '../Review/proposal';
 import { classifyProposalEdit } from '../Review/proposal';
 import ProposalCard from '../Review/ProposalCard';
-import { useAcceptanceBundle } from '../useAcceptanceBundle';
+import { useAcceptanceBundle, useEvidenceUrlRefresh } from '../useAcceptanceBundle';
 import { canCommentOnAcceptanceEvidence } from '../visibility';
 import {
   AcceptedNote,
@@ -157,6 +157,7 @@ export const AcceptanceCheckRow = memo<{
     // viewer — the row also renders in hosts with no acceptance scope.
     const scope = useOptionalAcceptanceScope();
     const { data: bundle } = useAcceptanceBundle(scope?.acceptanceId ?? '');
+    const refreshEvidenceUrl = useEvidenceUrlRefresh(scope?.acceptanceId);
     const comments = useAcceptanceComments(scope?.acceptanceId);
     const authorColor = useAcceptanceAuthorColor();
     const viewerId = useUserStore(userProfileSelectors.userId);
@@ -265,6 +266,7 @@ export const AcceptanceCheckRow = memo<{
         previousAnnotations:
           activeReview?.action === 'reject' ? activeReview.annotations : undefined,
         previousComment: activeReview?.action === 'reject' ? activeReview.comment : undefined,
+        refreshEvidenceUrl,
         checkDescription: check.planItem?.description,
         checkTitle: `C${check.seq} · ${title}`,
         draftKey: `${check.result?.id ?? 'unexecuted'}:${check.id}`,
@@ -651,6 +653,7 @@ export const AcceptanceCheckRow = memo<{
               evidence={check.evidence}
               overlays={commentOverlays}
               reviewNotes={activeReview?.action === 'reject' ? activeReview.annotations : undefined}
+              onRefreshEvidenceUrl={refreshEvidenceUrl}
               onReviewEvidence={canReview ? (id) => openReject(undefined, id) : undefined}
             />
             {staleThreads.length > 0 && (

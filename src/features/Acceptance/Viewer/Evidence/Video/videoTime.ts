@@ -12,12 +12,20 @@ export const PLAYBACK_RATES = [0.5, 1, 1.5, 2] as const;
 /** How long a claim stays on screen after its frame, like a subtitle. */
 export const CLAIM_CAPTION_SECONDS = 2;
 
-/** `m:ss.cc` — a skeleton flash can last a handful of frames. */
-export const formatVideoTime = (seconds: number) => {
-  if (!Number.isFinite(seconds) || seconds < 0) return '0:00.00';
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}:${(seconds - minutes * 60).toFixed(2).padStart(5, '0')}`;
-};
+export { formatVideoTimestamp as formatVideoTime } from '@lobechat/const/verify';
+
+/**
+ * Whether a note disputes this exact claim. Two claims can share a frame and a
+ * kind, so the quoted text is part of the identity.
+ */
+export const disputesClaim = (
+  disputes: Pick<VerifyEvidenceChapter, 'kind' | 'note' | 't'> | undefined,
+  claim: VerifyEvidenceChapter,
+) =>
+  Boolean(disputes) &&
+  disputes!.t === claim.t &&
+  disputes!.kind === claim.kind &&
+  disputes!.note === claim.note;
 
 /** `m:ss` for chapter chips, where hundredths are noise. */
 export const formatVideoClock = (seconds: number) => {

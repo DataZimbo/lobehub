@@ -183,6 +183,11 @@ export const DesktopEvidenceReview = memo<DesktopEvidenceReviewProps>(({ model }
                   src={activeEvidence.fileUrl}
                   onAddNote={model.addVideoNote}
                   onSelectNote={model.setActiveNoteKey}
+                  onRefreshSource={
+                    model.refreshEvidenceUrl
+                      ? () => model.refreshEvidenceUrl!(activeEvidence.id)
+                      : undefined
+                  }
                 />
               ) : (
                 <EvidenceStage

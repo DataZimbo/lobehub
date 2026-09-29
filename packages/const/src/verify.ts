@@ -444,6 +444,19 @@ export const normalizeEvidenceMetadata = (metadata: unknown, type: string): unkn
 };
 
 /**
+ * A video timestamp as `m:ss.cc` — a skeleton flash can last a handful of
+ * frames. Rounds to whole centiseconds first so 59.999s carries into the next
+ * minute (`1:00.00`) instead of reading `0:60.00`.
+ */
+export const formatVideoTimestamp = (seconds: number) => {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00.00';
+  const centiseconds = Math.round(seconds * 100);
+  const minutes = Math.floor(centiseconds / 6000);
+  const rest = (centiseconds - minutes * 6000) / 100;
+  return `${minutes}:${rest.toFixed(2).padStart(5, '0')}`;
+};
+
+/**
  * The whole frame. A reviewer note on a video that marks a moment or a span
  * without circling an area carries this region.
  */

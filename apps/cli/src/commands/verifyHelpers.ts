@@ -11,6 +11,7 @@ import type {
 } from '@lobechat/const/verify';
 import {
   acceptanceSubjectTypes,
+  formatVideoTimestamp,
   GOMS_KLM_TRACE_FILE,
   isFullFrameRect,
   isProgrammaticTestCheck,
@@ -1058,12 +1059,8 @@ export interface ReviewAnnotationRegion {
   time?: { end?: number; start?: number };
 }
 
-/** `m:ss.cc` — frame-level precision, since a flash may last a few frames. */
-export const formatVideoTime = (seconds: number) => {
-  const minutes = Math.floor(seconds / 60);
-  const rest = (seconds - minutes * 60).toFixed(2).padStart(5, '0');
-  return `${minutes}:${rest}`;
-};
+/** `m:ss.cc` — shared with the acceptance page so both read the same moment. */
+export const formatVideoTime = formatVideoTimestamp;
 
 const isSeconds = (value?: number): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0;

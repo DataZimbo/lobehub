@@ -22,7 +22,7 @@ import {
   VideoControlBar,
   VideoLoadError,
 } from './VideoChrome';
-import { claimAt, formatVideoTime, frameOf } from './videoTime';
+import { claimAt, disputesClaim, formatVideoTime, frameOf } from './videoTime';
 import { VideoTimeline } from './VideoTimeline';
 
 type Rect = AcceptanceReviewAnnotation['rect'];
@@ -94,6 +94,8 @@ interface VideoReviewStageProps {
     rect?: Rect;
     time: NonNullable<AcceptanceReviewAnnotation['time']>;
   }) => void;
+  /** Re-sign the file link; resolves to the fresh URL, if the evidence still exists. */
+  onRefreshSource?: () => Promise<string | undefined>;
   onSelectNote: (key: number) => void;
   src: string;
 }
@@ -109,9 +111,20 @@ const isTyping = (target: EventTarget | null) =>
  * and an agent claim captioned on screen can be disputed in one click.
  */
 export const VideoReviewStage = memo<VideoReviewStageProps>(
-  ({ activeNoteKey, chapters, handleRef, notes, onAddNote, onSelectNote, src }) => {
+  ({
+    activeNoteKey,
+    chapters,
+    handleRef,
+    notes,
+    onAddNote,
+    onRefreshSource,
+    onSelectNote,
+    src: initialSrc,
+  }) => {
     const { t } = useTranslation('verify');
     const videoRef = useRef<HTMLVideoElement>(null);
+    // The modal holds the link it opened with; a re-signed one replaces it here.
+    const [src, setSrc] = useState(initialSrc);
     const [range, setRange] = useState<VideoLoop | null>(null);
     const [loop, setLoop] = useState(true);
     const clock = useVideoClock(videoRef, { loop: loop ? range : null, src });
@@ -241,9 +254,7 @@ export const VideoReviewStage = memo<VideoReviewStageProps>(
     };
 
     const claim = claimAt(chapters, time);
-    const disputed = claim
-      ? notes.some((note) => note.disputes?.t === claim.t && note.disputes.kind === claim.kind)
-      : false;
+    const disputed = claim ? notes.some((note) => disputesClaim(note.disputes, claim)) : false;
     const timed = notes.filter((note) => note.time);
     const aspect = size ? size.width / size.height : 16 / 9;
 
@@ -310,7 +321,16 @@ export const VideoReviewStage = memo<VideoReviewStageProps>(
                   )}
                 </div>
               )}
-              {status === 'error' && <VideoLoadError src={src} onReload={controls.reload} />}
+              {status === 'error' && (
+                <VideoLoadError
+                  src={src}
+                  onReload={async () => {
+                    const fresh = await onRefreshSource?.();
+                    if (fresh && fresh !== src) setSrc(fresh);
+                    else controls.reload();
+                  }}
+                />
+              )}
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   claimAt,
+  disputesClaim,
   formatVideoClock,
   formatVideoTime,
   frameOf,
@@ -51,5 +52,17 @@ describe('video time', () => {
     expect(isOnFrame(7.2, 7.2, true)).toBe(true);
     expect(isOnFrame(7.2, 7.2 + 1 / 30, true)).toBe(false);
     expect(isOnFrame(7.2, 7.4, false)).toBe(true);
+  });
+});
+
+describe('disputesClaim', () => {
+  // Two self-checks can share a frame; disputing one must not settle the other.
+  it('tells apart two claims of the same kind on the same frame', () => {
+    const first = { kind: 'check' as const, note: 'no skeleton', t: 7.9 };
+    const second = { kind: 'check' as const, note: 'first question in place', t: 7.9 };
+
+    expect(disputesClaim(first, first)).toBe(true);
+    expect(disputesClaim(first, second)).toBe(false);
+    expect(disputesClaim(undefined, first)).toBe(false);
   });
 });

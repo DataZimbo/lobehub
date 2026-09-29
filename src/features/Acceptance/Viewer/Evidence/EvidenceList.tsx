@@ -72,9 +72,11 @@ export const EvidenceList = memo<{
    * in one row), the boxes land on the image that is already here.
    */
   overlays?: EvidenceOverlayMap;
+  /** A freshly signed URL for one evidence — lets a video recover an expired link. */
+  onRefreshEvidenceUrl?: (evidenceId: string) => Promise<string | undefined>;
   /** The standing reject's notes — video ones are pinned to the player's timeline. */
   reviewNotes?: AcceptanceReviewAnnotation[];
-}>(({ evidence, overlays, onReviewEvidence, reviewNotes }) => {
+}>(({ evidence, overlays, onRefreshEvidenceUrl, onReviewEvidence, reviewNotes }) => {
   const { md = true } = useResponsive();
   const sorted = [...evidence].sort((a, b) => (isVisual(b) ? 1 : 0) - (isVisual(a) ? 1 : 0));
   if (sorted.length === 0) return null;
@@ -136,6 +138,9 @@ export const EvidenceList = memo<{
               key={item.id}
               notes={reviewNotes?.filter((note) => note.evidenceId === item.id)}
               src={item.fileUrl}
+              onRefreshSource={
+                onRefreshEvidenceUrl ? () => onRefreshEvidenceUrl(item.id) : undefined
+              }
             />
           );
         if (item.fileUrl && item.type === 'audio')

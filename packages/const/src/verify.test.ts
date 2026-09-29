@@ -49,6 +49,7 @@ import type {
   verifyVerdicts,
 } from './verify';
 import {
+  formatVideoTimestamp,
   isProgrammaticTestCheck,
   normalizeEvidenceMetadata,
   normalizeVerifySurface,
@@ -240,5 +241,23 @@ describe('normalizeEvidenceMetadata', () => {
     const metadata = { comparison: { id: 'a' } };
     expect(normalizeEvidenceMetadata(metadata, 'video')).toBe(metadata);
     expect(normalizeEvidenceMetadata(undefined, 'video')).toBeUndefined();
+  });
+});
+
+describe('formatVideoTimestamp', () => {
+  it('formats to the hundredth', () => {
+    expect(formatVideoTimestamp(7.2)).toBe('0:07.20');
+    expect(formatVideoTimestamp(66.75)).toBe('1:06.75');
+  });
+
+  // Rounding the seconds after taking the minutes produced `0:60.00`.
+  it('carries a rounded-up second into the next minute', () => {
+    expect(formatVideoTimestamp(59.999)).toBe('1:00.00');
+    expect(formatVideoTimestamp(119.996)).toBe('2:00.00');
+  });
+
+  it('reads an unusable time as the start', () => {
+    expect(formatVideoTimestamp(Number.NaN)).toBe('0:00.00');
+    expect(formatVideoTimestamp(-1)).toBe('0:00.00');
   });
 });

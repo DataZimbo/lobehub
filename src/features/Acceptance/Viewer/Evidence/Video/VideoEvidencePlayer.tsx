@@ -29,6 +29,8 @@ interface VideoEvidencePlayerProps {
   chapters?: VerifyEvidenceChapter[];
   /** Reviewer notes already made on this video, pinned to the timeline. */
   notes?: AcceptanceReviewAnnotation[];
+  /** Re-sign the file link before retrying — an expired link never loads. */
+  onRefreshSource?: () => Promise<unknown>;
   src: string;
 }
 
@@ -39,7 +41,7 @@ interface VideoEvidencePlayerProps {
  * Space never hijacks the page scroll.
  */
 export const VideoEvidencePlayer = memo<VideoEvidencePlayerProps>(
-  ({ caption, chapters = [], notes = [], src }) => {
+  ({ caption, chapters = [], notes = [], onRefreshSource, src }) => {
     const rootRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const clock = useVideoClock(videoRef, { src });
@@ -88,7 +90,17 @@ export const VideoEvidencePlayer = memo<VideoEvidencePlayerProps>(
                 {claim && <ClaimCaption claim={claim} />}
               </div>
             )}
-            {status === 'error' && <VideoLoadError src={src} onReload={controls.reload} />}
+            {status === 'error' && (
+              <VideoLoadError
+                src={src}
+                onReload={async () => {
+                  // A new link re-renders with a new src and loads itself;
+                  // the explicit load covers a transient failure on the same one.
+                  await onRefreshSource?.();
+                  controls.reload();
+                }}
+              />
+            )}
           </div>
           <div
             className={styles.bar}
