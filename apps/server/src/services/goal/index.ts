@@ -1237,7 +1237,7 @@ export class GoalService {
     const unfinishedNodes = graph.nodes.filter(
       (node) =>
         node.kind === 'task' &&
-        !isGoalReportNode(node) &&
+        !isGoalReportNode(graph, node) &&
         node.taskId &&
         !TERMINAL_NODE_STATUSES.has(node.status),
     );
@@ -1401,7 +1401,7 @@ export class GoalService {
         (node) =>
           node.kind === 'task' &&
           node.title !== GOAL_ACCEPTANCE_TASK_TITLE &&
-          !isGoalReportNode(node),
+          !isGoalReportNode(before, node),
       ).length >= (goal.config?.exploration?.maxExperiments ?? 0)
     )
       return goal;
